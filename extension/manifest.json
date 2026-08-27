@@ -1,0 +1,105 @@
+{
+  "manifest_version": 3,
+  "name": "凯旋智聘",
+  "version": "1.5.0",
+  "description": "支持打招呼、自动沟通、未读简历采集与人才库管理的招聘辅助工具",
+  "permissions": [
+    "sidePanel",
+    "storage",
+    "tabs",
+    "downloads",
+    "alarms"
+  ],
+  "host_permissions": [
+    "https://www.zhipin.com/*",
+    "https://hr.uf-tree.com/*",
+    "https://api.openai.com/*",
+    "https://api.deepseek.com/*"
+  ],
+  "background": {
+    "service_worker": "service-worker/sw.js",
+    "type": "module"
+  },
+  "side_panel": {
+    "default_path": "sidepanel/index.html"
+  },
+  "action": {
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.zhipin.com/web/chat*"
+      ],
+      "js": [
+        "content-script/inject-hook.js"
+      ],
+      "world": "MAIN",
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://www.zhipin.com/*"
+      ],
+      "js": [
+        "content-script/inject-resume-probe.js"
+      ],
+      "world": "MAIN",
+      "run_at": "document_start",
+      "all_frames": true,
+      "match_origin_as_fallback": true
+    },
+    {
+      "matches": [
+        "https://www.zhipin.com/web/chat*",
+        "https://www.zhipin.com/web/geek/recommend*"
+      ],
+      "js": [
+        "content-script/selectors.js",
+        "content-script/index.js",
+        "content-script/resume-collector.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.zhipin.com/*"
+      ],
+      "js": [
+        "content-script/resume-scorer-probe.js"
+      ],
+      "world": "MAIN",
+      "run_at": "document_start",
+      "all_frames": true,
+      "match_origin_as_fallback": true
+    },
+    {
+      "matches": [
+        "https://www.zhipin.com/*"
+      ],
+      "js": [
+        "content-script/resume-scorer-bridge.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.zhipin.com/*"
+      ],
+      "js": [
+        "content-script/jd-collector.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtBRVI5R8a8BR8UUC/VeHTncY0H/A2ct99jWmCpfivSf5Zt7BpYValkK6HEGys9ZRUzXuTJAt8uANKe0LqRyPSrugMFmz7WRVA2slrUhZCrKDSxjKK2uyOWARdui2f8SLanHZOk36990kIFYxqhqq8nDXxaijwSy9OeYTj3FUX8GQBWBuHv3uIOCWuo6ZawP5EnK7Yz+V1kaWxwmb8LmjaTI2l2ore+W/bhsKNfaouH/Qs2JJdx94gP0d1hfaJlnO8x41nCLqHlemNDCkxP9x2OGTX/dCfgPwdtdBmHA4VTrw4nOVf0zhNCH1KKmHr2RbTWT6q+XswvEYfkvzEPn2OwIDAQAB"
+}

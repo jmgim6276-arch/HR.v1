@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>打招呼记录</title>
+  <link rel="stylesheet" href="shared.css">
+  <style>
+    .record-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .record-table th { text-align: left; color: var(--meta); font-weight: 500; padding: 8px 4px; border-bottom: 1px solid var(--border-soft); }
+    .record-table td { padding: 10px 4px; border-bottom: 1px solid var(--border-soft); vertical-align: middle; }
+    .record-name { font-weight: 600; color: var(--fg); }
+    .record-job { color: var(--fg-2); }
+    .record-keywords { color: var(--accent); font-size: 11px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .record-time { color: var(--muted); font-family: var(--font-mono); font-size: 11px; white-space: nowrap; }
+    .status-success { background: color-mix(in srgb, var(--success), transparent 90%); color: var(--success); padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; }
+
+    .paginator { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 16px; }
+    .page-btn { padding: 6px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); cursor: pointer; font-size: 12px; }
+    .page-btn:hover { background: var(--surface); }
+    .page-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+    .page-btn:disabled { opacity: 0.4; cursor: default; }
+  </style>
+</head>
+<body>
+  <div class="panel-content">
+    <div class="row-between" style="margin-bottom:var(--space-4)">
+      <h3 style="font-size:15px;font-weight:600;margin:0" id="recordTitle">打招呼记录</h3>
+      <button class="btn btn-secondary" style="font-size:12px;padding:6px 12px" id="btnExport">导出结果</button>
+    </div>
+    <div id="emptyState" style="text-align:center;padding:40px 20px;color:var(--muted);display:none">
+      <div style="font-size:40px;margin-bottom:12px;opacity:0.4">👋</div>
+      <p style="margin:0">暂无打招呼记录</p>
+      <p style="font-size:12px;margin-top:6px">启动打招呼任务后，记录将在此显示</p>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="record-table">
+        <thead><tr id="tableHead"></tr></thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+    <div id="paginatorArea" class="paginator" style="display:none"></div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" style="position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1d1d1f;color:#fff;padding:10px 24px;border-radius:8px;font-size:13px;z-index:999;opacity:0;transition:opacity 0.3s;pointer-events:none"></div>
+
+  <script src="js/greeting-records.js"></script>
+</body>
+</html>

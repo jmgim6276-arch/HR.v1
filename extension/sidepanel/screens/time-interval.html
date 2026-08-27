@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>打招呼拟人频率</title>
+  <link rel="stylesheet" href="shared.css">
+</head>
+<body>
+  <div class="panel-content">
+    <h2 class="section-title" style="font-size:17px">打招呼频率设置</h2>
+
+    <div class="field">
+      <label>连续发送多条消息间隔（秒）</label>
+      <div style="display:flex;align-items:center;gap:8px">
+        <input type="number" class="input num" id="sendDelayMin" value="5" min="5" max="30" style="width:70px">
+        <span style="font-size:13px;color:var(--muted)">至</span>
+        <input type="number" class="input num" id="sendDelayMax" value="8" min="5" max="30" style="width:70px">
+        <span style="font-size:13px;color:var(--muted)">秒</span>
+      </div>
+      <div style="font-size:11px;color:var(--meta);margin-top:6px">模拟人工输入习惯，发送多条消息的随机延迟。</div>
+    </div>
+
+    <div class="field">
+      <label>候选人处理间隔（秒）</label>
+      <div style="display:flex;align-items:center;gap:8px">
+        <input type="number" class="input num" id="userInterval" value="60" min="60" max="300" style="width:100px">
+        <span style="font-size:13px;color:var(--muted)">秒</span>
+      </div>
+      <div style="font-size:11px;color:var(--meta);margin-top:6px">处理完当前候选人后，进入下一个候选人的间隔。</div>
+    </div>
+
+    <div class="field">
+      <label>打招呼间隔（秒）</label>
+      <div style="display:flex;align-items:center;gap:8px">
+        <input type="number" class="input num" id="greetInterval" value="120" min="120" max="600" style="width:100px">
+        <span style="font-size:13px;color:var(--muted)">秒</span>
+      </div>
+      <div style="font-size:11px;color:var(--meta);margin-top:6px">每次打招呼之间的最小间隔，避免过于频繁发送。</div>
+    </div>
+
+    <div class="field">
+      <label>连续运行时长设置</label>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:13px;color:var(--muted)">运行</span>
+        <input type="number" class="input num" id="runDuration" value="60" min="1" max="60" style="width:70px">
+        <span style="font-size:13px;color:var(--muted)">分钟，暂停</span>
+        <input type="number" class="input num" id="pauseDuration" value="5" min="5" max="120" style="width:70px">
+        <span style="font-size:13px;color:var(--muted)">分钟</span>
+      </div>
+      <div style="font-size:11px;color:var(--meta);margin-top:6px">设置打招呼任务在连续运行多久后自动暂停休息。</div>
+    </div>
+
+    <div class="field">
+      <label>单次运行最大时长</label>
+      <div style="display:flex;align-items:center;gap:8px">
+        <input type="number" class="input num" id="greetingMaxRunDuration" value="4" style="width:70px" min="1" max="4">
+        <span style="font-size:13px;color:var(--muted)">小时</span>
+      </div>
+      <div style="font-size:11px;color:var(--meta);margin-top:6px">单次打招呼运行的最大时长，超过后将自动暂停，最长不超过 4 小时。</div>
+    </div>
+
+    <div style="margin-top:32px">
+      <button class="btn btn-primary" style="width:100%" id="saveBtn">保存间隔设置</button>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#1d1d1f;color:#fff;padding:10px 24px;border-radius:8px;font-size:13px;z-index:999;opacity:0;transition:opacity 0.3s;pointer-events:none"></div>
+
+  <script src="js/time-interval.js"></script>
+</body>
+</html>

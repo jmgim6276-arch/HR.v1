@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>定时任务（打招呼 + 自动回复）</title>
+  <link rel="stylesheet" href="shared.css">
+  <style>
+    .task-card { background: var(--surface); border: 1px solid var(--border-soft); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); margin-bottom: var(--space-3); }
+    .task-top { display: flex; align-items: center; gap: 8px; }
+    .task-name { font-size: 14px; font-weight: 600; flex: 1; }
+    .task-desc { font-size: 12px; color: var(--text-2, #86868b); margin-top: 6px; }
+    .task-actions { margin-top: 8px; display: flex; gap: 6px; }
+    .module-badge { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px; white-space: nowrap; }
+    .badge-greeting { background: color-mix(in srgb, #0a84ff, transparent 85%); color: #0a84ff; }
+    .badge-reply { background: color-mix(in srgb, #bf5af2, transparent 85%); color: #bf5af2; }
+    .status-toggle { position: relative; display: inline-block; width: 40px; height: 22px; flex-shrink: 0; }
+    .status-toggle input { opacity: 0; width: 0; height: 0; }
+    .status-toggle .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: var(--border); transition: .3s; border-radius: 22px; }
+    .status-toggle .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 2px; bottom: 2px; background-color: white; transition: .3s; border-radius: 50%; }
+    .status-toggle input:checked + .slider { background-color: var(--success); }
+    .status-toggle input:checked + .slider:before { transform: translateX(18px); }
+    .btn-sm { padding: 4px 10px; font-size: 11px; border-radius: 4px; cursor: pointer; border: 1px solid var(--border); background: transparent; color: var(--text); transition: all 0.2s; white-space: nowrap; }
+    .btn-sm:hover { background: var(--border); }
+    .btn-outline { border-color: var(--border); }
+    .manage-row { display: flex; gap: 10px; margin-bottom: var(--space-4); }
+    .manage-row .btn { flex: 1; }
+    .hint { font-size: 11px; color: var(--text-2, #86868b); margin-bottom: var(--space-4); line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <div class="panel-content">
+    <h2 class="section-title">定时任务</h2>
+    <div class="hint">一套列表管理「打招呼」与「自动回复」的定时任务。新增/编辑（含关联岗位）请点下方"管理"进入对应模块编辑器。</div>
+
+    <div class="manage-row">
+      <button class="btn btn-secondary" id="btnManageGreeting">管理打招呼定时任务</button>
+      <button class="btn btn-secondary" id="btnManageReply">管理自动回复定时任务</button>
+    </div>
+
+    <div id="taskList"></div>
+    <div id="emptyState" style="display:none;text-align:center;color:var(--text-2,#86868b);padding:30px 0;font-size:13px">暂无定时任务</div>
+  </div>
+
+  <script src="js/merged-scheduled-tasks.js"></script>
+  <div id="toast" style="position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1d1d1f;color:#fff;padding:10px 24px;border-radius:8px;font-size:13px;z-index:999;opacity:0;transition:opacity 0.3s;pointer-events:none"></div>
+</body>
+</html>

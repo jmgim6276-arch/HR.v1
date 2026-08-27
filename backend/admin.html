@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>智能招聘助手 · 后台开通</title>
+<style>
+  :root {
+    --accent:#4b4ee0; --accent-h:#3f42cf; --ink:#14151a; --muted:#6a6c76;
+    --border:#e4e5ea; --surface:#f5f6f8; --ok:#2f9e6f; --err:#d64545; --gold:#b08a3e;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,"PingFang SC",Segoe UI,sans-serif; color:var(--ink);
+         background:linear-gradient(180deg,#f7f8fa 0%,#eef0f4 100%); min-height:100vh; }
+  .wrap { max-width:760px; margin:0 auto; padding:40px 24px 60px; }
+  .brand { display:flex; align-items:center; gap:12px; margin-bottom:28px; }
+  .logo { width:36px; height:36px; border-radius:10px; display:grid; place-items:center; color:#fff;
+          font-weight:700; background:linear-gradient(135deg,#6366f1,#4b4ee0); box-shadow:0 3px 12px rgba(75,78,224,.35); }
+  .brand h1 { font-size:19px; margin:0; font-weight:600; letter-spacing:-.01em; }
+  .brand p { margin:2px 0 0; font-size:12px; color:var(--muted); }
+  .card { background:#fff; border:1px solid var(--border); border-radius:16px; padding:24px;
+          box-shadow:0 8px 30px rgba(20,21,26,.05); margin-bottom:20px; }
+  .card h2 { font-size:14px; margin:0 0 16px; font-weight:600; }
+  label { display:block; font-size:12px; color:var(--muted); margin:14px 0 6px; font-weight:500; }
+  input, select { width:100%; padding:11px 12px; border:1px solid var(--border); border-radius:10px;
+                  font-size:14px; font-family:inherit; background:#fff; transition:border-color .2s,box-shadow .2s; }
+  input:focus, select:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(75,78,224,.14); }
+  .row { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  button { margin-top:20px; width:100%; padding:12px; border:none; border-radius:10px; cursor:pointer;
+           background:var(--accent); color:#fff; font-size:15px; font-weight:600; transition:background .2s,transform .1s; }
+  button:hover { background:var(--accent-h); }
+  button:active { transform:scale(.99); }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  .msg { margin-top:14px; font-size:13px; padding:10px 12px; border-radius:10px; display:none; }
+  .msg.ok { display:block; background:color-mix(in srgb,var(--ok),transparent 90%); color:var(--ok); }
+  .msg.err { display:block; background:color-mix(in srgb,var(--err),transparent 90%); color:var(--err); }
+  .keyrow { display:flex; align-items:center; gap:10px; margin-bottom:18px; font-size:12px; color:var(--muted); }
+  .keyrow input { max-width:260px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th { text-align:left; color:var(--muted); font-weight:500; padding:10px 8px; border-bottom:1px solid var(--border); }
+  td { padding:10px 8px; border-bottom:1px solid var(--surface); }
+  .tag { padding:2px 8px; border-radius:5px; font-size:11px; font-weight:600; }
+  .tag.vip { background:color-mix(in srgb,var(--gold),transparent 82%); color:var(--gold); }
+  .tag.free { background:var(--surface); color:var(--muted); border:1px solid var(--border); }
+  .refresh { background:none; color:var(--accent); border:1px solid var(--border); width:auto; padding:6px 14px;
+             margin:0; font-size:12px; font-weight:500; }
+  .refresh:hover { background:var(--surface); }
+  .act { display:inline-flex; gap:6px; }
+  .act button { width:auto; margin:0; padding:4px 10px; font-size:11px; font-weight:500; border-radius:7px; }
+  .act .ext { background:var(--surface); color:var(--accent); border:1px solid var(--border); }
+  .act .ext:hover { background:#eef0f7; }
+  .act .cancel { background:none; color:var(--err); border:1px solid color-mix(in srgb,var(--err),transparent 70%); }
+  .act .cancel:hover { background:color-mix(in srgb,var(--err),transparent 92%); }
+  .flex { display:flex; align-items:center; justify-content:space-between; }
+  .hint { font-size:11px; color:var(--muted); margin-top:6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">
+    <div class="logo">智</div>
+    <div><h1>智能招聘助手 · 后台</h1><p>确认收款后，在此为用户开通会员</p></div>
+  </div>
+
+  <div class="keyrow">
+    <span>后台口令</span>
+    <input type="password" id="adminKey" placeholder="X-Admin-Key（部署时设的 ADMIN_KEY）" />
+    <span>（浏览器会记住，仅存本地）</span>
+  </div>
+
+  <div class="card">
+    <h2>开通会员</h2>
+    <label>用户邮箱（对方登录插件用的邮箱）</label>
+    <input type="email" id="email" placeholder="user@example.com" />
+    <div class="row">
+      <div>
+        <label>套餐</label>
+        <select id="plan">
+          <option value="plan_weekly">7天套餐（¥9.9 / 7天）</option>
+          <option value="plan_quarterly">季度套餐（¥298 / 90天）</option>
+          <option value="plan_yearly">年度套餐（¥698 / 365天）</option>
+          <option value="plan_three_year">三年套餐（¥1280 / 1095天）</option>
+        </select>
+      </div>
+    </div>
+    <button id="grantBtn">一键开通</button>
+    <div class="msg" id="grantMsg"></div>
+    <p class="hint">用户不存在会自动创建；对方用该邮箱登录即为会员。已有会员再开通会顺延为新套餐。</p>
+  </div>
+
+  <div class="card">
+    <h2>充值点数</h2>
+    <label>用户邮箱</label>
+    <input type="email" id="rechargeEmail" placeholder="user@example.com" />
+    <div class="row">
+      <div>
+        <label>点数（1 元 = 10 点）</label>
+        <input type="number" id="rechargePoints" min="1" step="0.5" placeholder="如收款 ¥50 填 500" />
+      </div>
+      <div>
+        <label>备注（选填，如微信转账尾号）</label>
+        <input type="text" id="rechargeNote" maxlength="200" placeholder="选填" />
+      </div>
+    </div>
+    <button id="rechargeBtn">确认充值</button>
+    <div class="msg" id="rechargeMsg"></div>
+    <p class="hint">用户不存在会自动创建；充值立即到账并记一笔 completed 订单。新用户注册已自带 50 体验点。</p>
+  </div>
+
+  <div class="card">
+    <div class="flex"><h2 style="margin:0">用户列表</h2><button class="refresh" id="refreshBtn">刷新</button></div>
+    <table style="margin-top:14px">
+      <thead><tr><th>邮箱</th><th>状态</th><th>套餐</th><th>到期</th><th>余额(点)</th><th>操作</th></tr></thead>
+      <tbody id="userRows"><tr><td colspan="6" style="color:var(--muted)">点「刷新」加载</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="card" id="txCard" style="display:none">
+    <div class="flex"><h2 style="margin:0">点数明细 · <span id="txEmail"></span></h2>
+      <span style="font-size:12px;color:var(--muted)">当前余额 <b id="txBalance"></b> 点</span></div>
+    <table style="margin-top:14px">
+      <thead><tr><th>时间</th><th>类型</th><th>场景</th><th>变动(点)</th><th>余后(点)</th><th>token(入/出)</th><th>备注</th></tr></thead>
+      <tbody id="txRows"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  const $ = id => document.getElementById(id);
+  const KEY_STORE = 'zp_admin_key';
+  const PLAN_TYPE_LABELS = {
+    weekly: '7天',
+    quarterly: '季度',
+    yearly: '年度',
+    three_year: '3年',
+    monthly: '旧月度',
+  };
+  // 记住口令（本地）
+  $('adminKey').value = localStorage.getItem(KEY_STORE) || '';
+  $('adminKey').addEventListener('input', e => localStorage.setItem(KEY_STORE, e.target.value));
+
+  function headers() {
+    return { 'Content-Type': 'application/json', 'X-Admin-Key': $('adminKey').value };
+  }
+
+  async function grant() {
+    const email = $('email').value.trim();
+    const plan_id = $('plan').value;
+    const msg = $('grantMsg');
+    msg.className = 'msg'; msg.textContent = '';
+    if (!email) { msg.className = 'msg err'; msg.textContent = '请填写用户邮箱'; return; }
+    $('grantBtn').disabled = true;
+    try {
+      const r = await fetch('/api/v1/admin/grant', {
+        method: 'POST', headers: headers(),
+        body: JSON.stringify({ email, plan_id }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail || '开通失败');
+      msg.className = 'msg ok';
+      msg.textContent = `✓ 已为 ${data.email} 开通「${data.plan_name}」，到期 ${new Date(data.ends_at).toLocaleDateString('zh-CN')}`;
+      loadUsers();
+    } catch (e) {
+      msg.className = 'msg err'; msg.textContent = '✗ ' + e.message;
+    } finally {
+      $('grantBtn').disabled = false;
+    }
+  }
+
+  const KIND_LABELS = { signup_bonus: '注册赠送', recharge: '充值', consume: '消耗', admin_adjust: '后台调整' };
+  const SCENE_LABELS = { reply_judge: '回复判断', resume_score: '简历打分', collect_score: '入库打分' };
+
+  async function recharge() {
+    const email = $('rechargeEmail').value.trim();
+    const points = parseFloat($('rechargePoints').value);
+    const note = $('rechargeNote').value.trim();
+    const msg = $('rechargeMsg');
+    msg.className = 'msg'; msg.textContent = '';
+    if (!email || !(points > 0)) { msg.className = 'msg err'; msg.textContent = '请填写邮箱和大于 0 的点数'; return; }
+    $('rechargeBtn').disabled = true;
+    try {
+      const r = await fetch('/api/v1/admin/billing/recharge', {
+        method: 'POST', headers: headers(),
+        body: JSON.stringify({ email, points, note }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail || '充值失败');
+      msg.className = 'msg ok';
+      msg.textContent = `✓ 已为 ${data.email} 充值 ${data.points} 点，当前余额 ${data.balance_points} 点`;
+      loadUsers();
+    } catch (e) {
+      msg.className = 'msg err'; msg.textContent = '✗ ' + e.message;
+    } finally {
+      $('rechargeBtn').disabled = false;
+    }
+  }
+
+  function prefillRecharge(emailEnc) {
+    $('rechargeEmail').value = decodeURIComponent(emailEnc);
+    $('rechargePoints').focus();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  async function loadTx(emailEnc) {
+    const email = decodeURIComponent(emailEnc);
+    try {
+      const r = await fetch(`/api/v1/admin/billing/transactions?email=${encodeURIComponent(email)}`, { headers: headers() });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail || '加载失败');
+      $('txCard').style.display = '';
+      $('txEmail').textContent = email;
+      $('txBalance').textContent = data.balance_points;
+      $('txRows').innerHTML = data.items.length ? data.items.map(t => `<tr>
+        <td>${new Date(t.created_at).toLocaleString('zh-CN')}</td>
+        <td>${KIND_LABELS[t.kind] || t.kind}</td>
+        <td>${SCENE_LABELS[t.scene] || (t.scene || '—')}</td>
+        <td style="color:${t.delta_points < 0 ? 'var(--err)' : 'var(--ok)'}">${t.delta_points > 0 ? '+' : ''}${t.delta_points}</td>
+        <td>${t.balance_after_points}</td>
+        <td>${t.prompt_tokens != null ? `${t.prompt_tokens}/${t.completion_tokens}` : '—'}</td>
+        <td>${t.note || '—'}</td>
+      </tr>`).join('') : '<tr><td colspan="7" style="color:var(--muted)">暂无流水</td></tr>';
+      $('txCard').scrollIntoView({ behavior: 'smooth' });
+    } catch (e) { alert('✗ ' + e.message); }
+  }
+
+  async function loadUsers() {
+    const tbody = $('userRows');
+    try {
+      const r = await fetch('/api/v1/admin/users', { headers: headers() });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail || '加载失败');
+      if (!data.users.length) { tbody.innerHTML = '<tr><td colspan="6" style="color:var(--muted)">暂无用户</td></tr>'; return; }
+      tbody.innerHTML = data.users.map(u => {
+        const e = encodeURIComponent(u.email);
+        const vipActions = u.is_vip
+          ? `<button class="ext" onclick="extend('${e}',7)">+7天</button>
+             <button class="ext" onclick="extend('${e}',90)">+90天</button>
+             <button class="ext" onclick="extend('${e}',365)">+365天</button>
+             <button class="ext" onclick="extend('${e}',1095)">+1095天</button>
+             <button class="cancel" onclick="cancelVip('${e}')">取消</button>`
+          : '';
+        const actions = `<div class="act">
+             <button class="ext" onclick="prefillRecharge('${e}')">充值</button>
+             <button class="ext" onclick="loadTx('${e}')">明细</button>
+             ${vipActions}
+           </div>`;
+        return `<tr>
+          <td>${u.email}</td>
+          <td>${u.is_vip ? '<span class="tag vip">会员</span>' : '<span class="tag free">免费</span>'}</td>
+          <td>${PLAN_TYPE_LABELS[u.plan_type] || '—'}</td>
+          <td>${u.ends_at ? new Date(u.ends_at).toLocaleDateString('zh-CN') : '—'}</td>
+          <td>${u.balance_points ?? '—'}</td>
+          <td>${actions}</td>
+        </tr>`;
+      }).join('');
+    } catch (e) {
+      tbody.innerHTML = `<tr><td colspan="6" style="color:var(--err)">${e.message}</td></tr>`;
+    }
+  }
+
+  async function extend(emailEnc, days) {
+    const email = decodeURIComponent(emailEnc);
+    try {
+      const r = await fetch('/api/v1/admin/extend', {
+        method: 'POST', headers: headers(), body: JSON.stringify({ email, days }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail || '延长失败');
+      alert(`✓ ${email} 已延长 ${days} 天，新到期 ${new Date(data.ends_at).toLocaleDateString('zh-CN')}`);
+      loadUsers();
+    } catch (e) { alert('✗ ' + e.message); }
+  }
+
+  async function cancelVip(emailEnc) {
+    const email = decodeURIComponent(emailEnc);
+    if (!confirm(`确定取消 ${email} 的会员？对方将立即降为免费版。`)) return;
+    try {
+      const r = await fetch('/api/v1/admin/cancel', {
+        method: 'POST', headers: headers(), body: JSON.stringify({ email }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail || '取消失败');
+      loadUsers();
+    } catch (e) { alert('✗ ' + e.message); }
+  }
+  window.extend = extend; window.cancelVip = cancelVip;
+  window.prefillRecharge = prefillRecharge; window.loadTx = loadTx;
+
+  $('grantBtn').addEventListener('click', grant);
+  $('rechargeBtn').addEventListener('click', recharge);
+  $('refreshBtn').addEventListener('click', loadUsers);
+</script>
+</body>
+</html>

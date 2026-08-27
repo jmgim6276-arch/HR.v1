@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>三模块智能联动</title>
+  <link rel="stylesheet" href="shared.css" />
+  <style>
+    body { padding: 22px; color: #24252b; background: #fafafa; }
+    .page { max-width: 920px; margin: 0 auto; }
+    h2 { margin: 0 0 6px; font-size: 20px; }
+    .subtitle { margin: 0 0 18px; color: #777b87; font-size: 13px; line-height: 1.7; }
+    .panel { background: #fff; border: 1px solid #ececf2; border-radius: 14px; padding: 18px; margin-bottom: 14px; }
+    .module-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .module { border: 1px solid #e7e7ef; border-radius: 12px; padding: 14px; transition: .2s; }
+    .module.enabled { border-color: #6865e8; background: #f7f6ff; }
+    .module-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .module-title { font-weight: 700; font-size: 15px; }
+    .module p { margin: 8px 0 0; color: #777b87; font-size: 12px; line-height: 1.6; }
+    .switch { position: relative; width: 40px; height: 22px; flex: 0 0 auto; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; inset: 0; border-radius: 22px; background: #d9dae3; cursor: pointer; transition: .2s; }
+    .slider::before { content: ""; position: absolute; width: 18px; height: 18px; left: 2px; top: 2px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px #9996; transition: .2s; }
+    input:checked + .slider { background: #5d59df; }
+    input:checked + .slider::before { transform: translateX(18px); }
+    .flow { display: flex; align-items: center; gap: 8px; margin-top: 14px; color: #555866; font-size: 12px; flex-wrap: wrap; }
+    .flow span { padding: 7px 10px; border-radius: 8px; background: #f2f2f7; }
+    .flow b { color: #aaa; }
+    .settings { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    label.field { display: flex; flex-direction: column; gap: 7px; font-size: 13px; font-weight: 600; }
+    input[type="number"] { border: 1px solid #dedee7; border-radius: 8px; padding: 9px 10px; font: inherit; background: #fff; }
+    .hint { color: #9194a0; font-size: 11px; font-weight: 400; }
+    .status { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .status-main { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: #aaa; flex: 0 0 auto; }
+    .dot.running { background: #31b978; box-shadow: 0 0 0 5px #31b97820; }
+    .dot.paused { background: #f0a43a; box-shadow: 0 0 0 5px #f0a43a20; }
+    #statusText { font-weight: 650; }
+    #stageText { color: #858894; font-size: 12px; margin-top: 4px; }
+    .actions { display: flex; gap: 10px; margin-top: 16px; }
+    button { border: 0; border-radius: 9px; padding: 10px 18px; font-weight: 650; cursor: pointer; }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+    .primary { background: #5d59df; color: #fff; flex: 1; }
+    .secondary { background: #ececf3; color: #4f5260; }
+    .danger { background: #fff0f0; color: #e24f57; border: 1px solid #ffd5d7; }
+    .log { height: 220px; overflow: auto; padding: 12px; border-radius: 10px; background: #202124; color: #ddd; font: 12px/1.7 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .log-line.warn { color: #ffc65c; } .log-line.error { color: #ff7b82; }
+    .section-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .section-head h3 { margin: 0; font-size: 15px; }
+    .failure-list { display: grid; gap: 8px; }
+    .failure { border: 1px solid #f0d9db; background: #fffafa; padding: 11px; border-radius: 9px; display: flex; justify-content: space-between; gap: 12px; }
+    .failure strong { font-size: 13px; } .failure small { display: block; color: #8b7377; margin-top: 4px; line-height: 1.5; }
+    .failure button { padding: 6px 10px; font-size: 11px; white-space: nowrap; align-self: center; }
+    .empty { color: #999ca7; text-align: center; padding: 18px; font-size: 12px; }
+    /* 合并控制台：每模块折叠区（状态 + 调参 + 统计） */
+    .mstatus { margin-top: 10px; font-size: 12px; color: #555866; display: flex; align-items: center; gap: 6px; }
+    .mstatus .mdot { width: 8px; height: 8px; border-radius: 50%; background: #c6c7d0; flex: 0 0 auto; }
+    .mstatus .mdot.running { background: #31b978; }
+    .mstatus .mdot.paused { background: #f0a43a; }
+    .detail-toggle { margin-top: 8px; background: none; border: 0; color: #5d59df; font-size: 12px; font-weight: 600; cursor: pointer; padding: 2px 0; }
+    .mdetail { margin-top: 8px; border-top: 1px dashed #e7e7ef; padding-top: 10px; display: none; }
+    .mdetail.open { display: block; }
+    .mdetail .mini-field { display: flex; flex-direction: column; gap: 5px; font-size: 12px; font-weight: 600; margin-bottom: 10px; }
+    .mdetail input[type="number"] { border: 1px solid #dedee7; border-radius: 7px; padding: 7px 9px; font: inherit; background: #fff; }
+    .mdetail .mini-hint { color: #9194a0; font-size: 11px; font-weight: 400; line-height: 1.5; }
+    .stat-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin: 8px 0 10px; }
+    .stat-cell { background: #f5f5f8; border-radius: 8px; padding: 8px 4px; text-align: center; }
+    .stat-cell b { display: block; font-size: 16px; }
+    .stat-cell span { font-size: 10px; color: #85888a; }
+    .switch-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; font-weight: 600; padding: 4px 0; }
+    .switch-row .mini-hint { font-weight: 400; }
+    @media (max-width: 760px) { .module-grid { grid-template-columns: 1fr; } .settings { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h2>三模块智能联动</h2>
+    <p class="subtitle">一次设置、一键启动。界面持续运行，内部按固定流水线协调页面操作，避免三个模块争抢 BOSS 页面。</p>
+
+    <section class="panel">
+      <div class="module-grid">
+        <div class="module" data-module="greeting">
+          <div class="module-head"><span class="module-title">① 打招呼</span><label class="switch"><input id="enableGreeting" type="checkbox" checked><span class="slider"></span></label></div>
+          <p>在推荐牛人页按岗位规则筛选，并向候选人索要简历。</p>
+          <div class="mstatus"><span class="mdot" id="dotGreeting"></span><span id="statusGreeting">未启动</span></div>
+          <button class="detail-toggle" type="button" data-detail="detailGreeting">详情 ▾</button>
+          <div class="mdetail" id="detailGreeting">
+            <div class="mini-hint">打招呼在「推荐牛人」页运行，与本流水线其它阶段按序接力（同一标签页不能同时跑两个模块）。逐岗位的实时进度、当前候选人与匹配标签见下方「统一运行日志」。</div>
+          </div>
+        </div>
+        <div class="module" data-module="reply">
+          <div class="module-head"><span class="module-title">② 自动回复</span><label class="switch"><input id="enableReply" type="checkbox" checked><span class="slider"></span></label></div>
+          <p>进入沟通页后持续处理来信；简历采集期间消息自动排队。</p>
+          <div class="mstatus"><span class="mdot" id="dotReply"></span><span id="statusReply">未启动</span></div>
+          <button class="detail-toggle" type="button" data-detail="detailReply">详情 ▾</button>
+          <div class="mdetail" id="detailReply">
+            <div class="mini-hint">自动回复在「沟通」页运行；简历采集操作页面时它自动排队、采集结束自动恢复。收到/发出的逐条消息与判断结果见下方「统一运行日志」。</div>
+          </div>
+        </div>
+        <div class="module" data-module="resume">
+          <div class="module-head"><span class="module-title">③ 简历采集</span><label class="switch"><input id="enableResume" type="checkbox" checked><span class="slider"></span></label></div>
+          <p>采集所有有效简历。失败三次永久跳过，可在下方人工恢复。</p>
+          <div class="mstatus"><span class="mdot" id="dotResume"></span><span id="statusResume">未启动</span></div>
+          <button class="detail-toggle" type="button" data-detail="detailResume">调参·统计 ▾</button>
+          <div class="mdetail" id="detailResume">
+            <div class="stat-grid">
+              <div class="stat-cell"><b id="statCollected">0</b><span>采集</span></div>
+              <div class="stat-cell"><b id="statSaved">0</b><span>入库</span></div>
+              <div class="stat-cell"><b id="statUpdated">0</b><span>更新</span></div>
+              <div class="stat-cell"><b id="statSkipped">0</b><span>跳过</span></div>
+              <div class="stat-cell"><b id="statReplied">0</b><span>已回复</span></div>
+            </div>
+            <label class="mini-field">本轮最多处理人数
+              <input id="rcMaxPerRun" type="number" min="1" max="200" value="100">
+            </label>
+            <label class="mini-field">候选人间隔（秒）
+              <input id="rcInterval" type="number" min="60" max="300" value="60">
+            </label>
+            <label class="mini-field">关键操作等待（秒）
+              <input id="rcActionDelay" type="number" min="4" max="15" value="4">
+            </label>
+            <div class="switch-row">
+              <span>入库后自动发送回复</span>
+              <label class="switch"><input id="rcAutoSend" type="checkbox"><span class="slider"></span></label>
+            </div>
+            <div class="mini-hint">自动回发使用「简历筛选 → 简历回复配置」里保存的话术，未配置则不会发送。以上调参在下次启动时生效。</div>
+          </div>
+        </div>
+      </div>
+      <div class="flow"><span>推荐牛人筛选并打招呼</span><b>→</b><span>自动切换沟通页</span><b>→</b><span>自动回复＋简历采集协调监听</span></div>
+    </section>
+
+    <section class="panel settings">
+      <label class="field">协调监听时长（分钟）
+        <input id="listenDuration" type="number" min="1" max="240" value="120">
+        <span class="hint">默认 120 分钟，暂停等待人工处理的时间不计入监听窗口。</span>
+      </label>
+      <label class="field">简历扫描间隔（秒）
+        <input id="scanInterval" type="number" min="15" max="300" value="60">
+        <span class="hint">默认每 60 秒检查一次新的有效简历请求。</span>
+      </label>
+    </section>
+
+    <section class="panel">
+      <div class="status">
+        <div class="status-main"><span class="dot" id="statusDot"></span><div><div id="statusText">等待启动</div><div id="stageText">当前阶段：未启动</div></div></div>
+      </div>
+      <div class="actions">
+        <button id="btnStart" class="primary">一键启动</button>
+        <button id="btnResume" class="secondary" hidden>一键继续</button>
+        <button id="btnStop" class="danger" disabled>停止全部</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="section-head"><h3>统一运行日志</h3><button id="btnClearLogs" class="secondary">清空显示</button></div>
+      <div id="logOutput" class="log"><div class="empty">暂无运行日志</div></div>
+    </section>
+
+    <section class="panel">
+      <div class="section-head"><h3>永久跳过与失败记录</h3><button id="btnRefreshFailures" class="secondary">刷新</button></div>
+      <div id="failureList" class="failure-list"><div class="empty">暂无永久跳过记录</div></div>
+    </section>
+  </div>
+  <script src="js/unified-workflow.js"></script>
+</body>
+</html>

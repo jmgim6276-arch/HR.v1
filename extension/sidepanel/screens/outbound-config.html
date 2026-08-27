@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>外呼配置</title>
+  <link rel="stylesheet" href="shared.css">
+  <style>
+    .config-card { background: var(--surface); border: 1px solid var(--border-soft); border-radius: var(--radius-lg); padding: var(--space-4); margin-bottom: var(--space-4); }
+    .intro { margin: 0 0 var(--space-3); color: var(--muted); font-size: var(--text-xs); line-height: 1.65; }
+    .card-title { font-size: 14px; font-weight: 600; margin-bottom: var(--space-3); }
+    .jd-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+    .jd-label { font-size: var(--text-xs); color: var(--muted); font-weight: 500; }
+    .jd-box { background: var(--surface-warm); border: 1px solid var(--border-soft); border-radius: var(--radius-md); padding: 10px; font-size: var(--text-xs); color: var(--fg); max-height: 170px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; line-height: 1.6; }
+    .jd-empty { color: var(--meta); }
+    .action-row { display: flex; justify-content: flex-end; gap: 10px; }
+    .notice { display: flex; gap: 10px; align-items: flex-start; padding: 12px; border: 1px solid var(--border-soft); border-radius: var(--radius-md); color: var(--muted); font-size: 11px; line-height: 1.6; }
+    .notice svg { flex-shrink: 0; color: var(--accent); margin-top: 1px; }
+  </style>
+</head>
+<body>
+  <div class="panel-content">
+    <h2 class="section-title">外呼配置</h2>
+
+    <!-- 公司级（全局） -->
+    <div class="config-card">
+      <div class="card-title">公司信息（全公司共用）</div>
+      <p class="intro">以下 3 项对所有岗位的外呼生效，随呼波特上传，用于 AI 外呼时向候选人介绍我方。</p>
+      <div class="field">
+        <label for="companyName">公司名称（用于默认首句，告知候选人我方来电信息）</label>
+        <input class="input" id="companyName" maxlength="100" placeholder="如：某某科技有限公司" />
+      </div>
+      <div class="field">
+        <label for="companyInformation">公司信息（福利 / 简介，用于回答候选人此类问题及简单介绍）</label>
+        <textarea class="textarea" id="companyInformation" maxlength="2000" placeholder="如：五险一金、双休、年终奖；公司专注 XX 领域…"></textarea>
+      </div>
+      <div class="field">
+        <label for="endUser">使用人员（仅用于区分使用人员，不带入对话）</label>
+        <input class="input" id="endUser" maxlength="50" placeholder="如：张三" />
+      </div>
+    </div>
+
+    <!-- 岗位级 -->
+    <div class="config-card">
+      <div class="card-title">岗位外呼字段（按岗位）</div>
+      <p class="intro">选择岗位后填写，随该岗位的候选人上传呼波特。岗位 JD 在你浏览 BOSS 职位页时自动抓取。</p>
+
+      <div class="field">
+        <label for="jobSelect">选择岗位</label>
+        <select class="input" id="jobSelect"></select>
+      </div>
+
+      <div class="field">
+        <div class="jd-head">
+          <span class="jd-label">岗位JD（自动抓取）</span>
+          <button class="btn btn-ghost" id="btnRefreshJd" type="button" style="padding:3px 12px;font-size:11px">刷新JD</button>
+        </div>
+        <div class="jd-box" id="jdBox"><span class="jd-empty">尚未抓取到该岗位 JD。请打开 BOSS 职位页（职位管理 / 职位详情），插件会自动抓取；或选中岗位后点「刷新JD」。</span></div>
+      </div>
+
+      <div class="field">
+        <label for="pendingConfirmation">电话待确认（我方想同候选人确认的问题）</label>
+        <textarea class="textarea" id="pendingConfirmation" maxlength="1000" placeholder="如：是否还在看机会？期望薪资？最快到岗时间？"></textarea>
+      </div>
+      <div class="field">
+        <label for="specialNotes">岗位特殊说明（我方需要重点和候选人说明的事情）</label>
+        <textarea class="textarea" id="specialNotes" maxlength="1000" placeholder="如：需倒班 / 驻场 / 有出差；社保基数说明…"></textarea>
+      </div>
+      <div class="field">
+        <label for="candidateIssues">候选人常见问题（QA 对，补充至知识库，丰富答疑）</label>
+        <textarea class="textarea" id="candidateIssues" maxlength="2000" placeholder="问：工作地点在哪？&#10;答：北京市海淀区 XX 大厦。&#10;问：是否接受应届？&#10;答：接受，有带教。"></textarea>
+      </div>
+      <div class="field">
+        <label for="firstSentence">首句（不传则用默认开场白）</label>
+        <textarea class="textarea" id="firstSentence" maxlength="300" style="min-height:60px" placeholder="默认：欸您好，呃这边看到您投递了我们的岗位。想和您简单交流一下，您看现在方便吗？"></textarea>
+      </div>
+    </div>
+
+    <div class="action-row">
+      <button class="btn btn-primary" id="btnSave">保存配置</button>
+    </div>
+
+    <div class="notice" style="margin-top:var(--space-4)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      <span>这些字段本身不会触发外呼。只有在「人才库」对某个候选人点「提交呼波特」时，才会把候选人信息连同这里配置的公司 / 岗位字段一起上传，由呼波特 AI 发起外呼。</span>
+    </div>
+  </div>
+
+  <div id="toast" style="position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1d1d1f;color:#fff;padding:10px 24px;border-radius:8px;font-size:13px;z-index:999;opacity:0;transition:opacity .3s;pointer-events:none"></div>
+  <script src="js/outbound-config.js"></script>
+</body>
+</html>

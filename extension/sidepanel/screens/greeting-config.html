@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>打招呼匹配规则配置</title>
+  <link rel="stylesheet" href="shared.css">
+  <style>
+    .form-section { margin-bottom: var(--space-5); }
+    .form-section-title {
+      font-size: 13px; font-weight: 600; color: var(--muted);
+      margin-bottom: 12px; padding-bottom: 4px;
+      border-bottom: 1px solid var(--border-soft);
+    }
+
+    .chip-group { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip {
+      padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border);
+      font-size: 12px; cursor: pointer; background: var(--surface); color: var(--fg);
+      transition: all 0.15s;
+    }
+    .chip.active { background: var(--accent); color: white; border-color: var(--accent); }
+    .chip.active-vip { background: #dca37c; color: white; border-color: #dca37c; }
+
+    .range-input { display: flex; align-items: center; gap: 8px; }
+    .range-input input { width: 70px; }
+
+    /* VIP 容器 */
+    .vip-container {
+      background: #fffaf5; border: 1px solid #f2e3d5;
+      padding: 16px; border-radius: var(--radius-md); margin-bottom: 20px;
+    }
+    .vip-title {
+      color: #b56c3a; font-weight: 600; font-size: 13px;
+      margin-bottom: 16px; display: flex; align-items: center; gap: 6px;
+    }
+    .vip-badge {
+      font-size: 10px; background: #fcece1;
+      padding: 2px 6px; border-radius: 4px; font-weight: normal;
+    }
+
+    /* 普通筛选容器 */
+    .normal-container {
+      background: var(--bg); border: 1px solid var(--border-soft);
+      padding: 16px; border-radius: var(--radius-md); margin-bottom: 20px;
+    }
+    .normal-title {
+      color: var(--fg); font-weight: 600; font-size: 13px; margin-bottom: 16px;
+    }
+
+    /* 匹配规则卡片 */
+    .rule-card {
+      background: var(--surface-warm); border: 1px solid var(--border-soft);
+      border-radius: var(--radius-md); padding: 16px; margin-bottom: 16px;
+    }
+    .rule-header {
+      display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;
+    }
+    .rule-title { font-size: 12px; font-weight: 600; color: var(--fg); }
+    .delete-btn { font-size: 11px; color: var(--danger); cursor: pointer; }
+
+    /* 打招呼话术消息框 */
+    .message-box-simple {
+      position: relative; margin-bottom: 12px;
+    }
+    .message-box-simple .textarea {
+      padding-right: 32px; background: var(--surface-warm); border-color: var(--border-soft);
+    }
+    .message-box-simple .delete-icon {
+      position: absolute; right: 10px; top: 10px;
+      font-size: 14px; color: var(--muted); cursor: pointer; opacity: 0.6;
+      display: flex; align-items: center; justify-content: center;
+      width: 20px; height: 20px;
+    }
+    .message-box-simple .delete-icon:hover { opacity: 1; color: var(--danger); }
+
+    /* 标签输入框 */
+    .tag-input-container {
+      display: flex; flex-wrap: wrap; gap: 6px; padding: 6px;
+      border: 1px solid var(--border); border-radius: var(--radius-sm);
+      background: var(--bg); min-height: 40px;
+      transition: border-color 0.2s;
+    }
+    .tag-input-container:focus-within { border-color: var(--accent); }
+    .tag-input-container input {
+      border: 0; outline: 0; flex: 1; min-width: 80px;
+      background: transparent; padding: 4px; font-size: 13px; color: var(--fg);
+    }
+    .keyword-tag {
+      background: var(--accent); color: white; padding: 2px 8px;
+      border-radius: 4px; font-size: 12px;
+      display: flex; align-items: center; gap: 6px;
+      animation: tagFadeIn 0.2s ease-out;
+    }
+    .keyword-tag.forbidden { background: var(--danger); }
+    .keyword-tag .tag-close {
+      cursor: pointer; opacity: 0.8; font-size: 14px; line-height: 1;
+    }
+    .keyword-tag .tag-close:hover { opacity: 1; }
+    @keyframes tagFadeIn {
+      from { opacity: 0; transform: scale(0.9); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    /* ─── 返回按钮 ─── */
+    .back-btn {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 6px 12px; border: none; background: transparent;
+      color: var(--accent); cursor: pointer; font-size: 13px;
+      border-radius: 6px; margin-bottom: 12px; transition: background 0.2s;
+    }
+    .back-btn:hover { background: color-mix(in srgb, var(--accent), transparent 90%); }
+
+    /* ─── 底部保存按钮 ─── */
+    .save-wrapper { margin-top: 20px; padding: 12px 0 24px; }
+    .save-wrapper .btn-primary {
+      width: 100%; padding: 14px; font-size: 16px; font-weight: 600;
+      border-radius: 12px; border: none;
+    }
+    .save-wrapper .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* ─── 只读模式样式 ─── */
+    .readonly input, .readonly textarea, .readonly .chip { pointer-events: none; opacity: 0.7; }
+    .readonly .chip.active, .readonly .chip.active-vip { opacity: 1; }
+    .readonly .tag-close, .readonly .delete-icon, .readonly .delete-btn,
+    .readonly [data-action="remove-rule"], .readonly [data-action="remove-message"] { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="panel-content">
+    <!-- 返回按钮 -->
+    <button class="back-btn" id="btnBack">← 返回岗位列表</button>
+
+    <!-- 基本信息 -->
+    <div class="form-section">
+      <div class="form-section-title">基本信息</div>
+      <div class="field">
+        <label>岗位名称</label>
+        <input type="text" class="input" id="jobNameInput" placeholder="输入岗位名称，如：高级前端开发工程师">
+      </div>
+      <div class="field">
+        <label>每次运行打招呼人数</label>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <input type="number" class="input" id="greetCountInput" value="20" style="width: 120px;">
+          <span style="font-size: 12px; color: var(--muted);">人 / 每次运行</span>
+        </div>
+        <div style="font-size: 11px; color: var(--muted); margin-top: 4px;">建议设置在 20-100 之间，以保证账号安全</div>
+      </div>
+    </div>
+
+    <!-- 人才筛选条件 -->
+    <div class="form-section">
+      <div class="form-section-title" style="border: none; padding-bottom: 0;">人才筛选条件</div>
+
+      <!-- VIP 筛选 -->
+      <div class="vip-container">
+        <div class="vip-title">
+          VIP 筛选条件
+          <span class="vip-badge">需高级权限</span>
+        </div>
+
+        <div class="field">
+          <label>年龄</label>
+          <div class="range-input">
+            <input type="number" class="input" id="vipAgeMin" placeholder="16" value="16" style="width:70px">
+            <span style="color:var(--muted);font-size:12px">-</span>
+            <input type="number" class="input" id="vipAgeMax" placeholder="不限" value="" style="width:70px">
+            <span style="font-size: 12px; color: var(--muted);">岁</span>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>活跃度</label>
+          <div class="chip-group" data-field="活跃度[单选]">
+            <div class="chip active-vip" data-value="">不限</div>
+            <div class="chip" data-value="just_active">刚刚活跃</div>
+            <div class="chip" data-value="today_active">今日活跃</div>
+            <div class="chip" data-value="three_days">3日内活跃</div>
+            <div class="chip" data-value="this_week">本周活跃</div>
+            <div class="chip" data-value="this_month">本月活跃</div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>性别</label>
+          <div class="chip-group" data-field="性别">
+            <div class="chip active-vip" data-value="">不限</div>
+            <div class="chip" data-value="male">男</div>
+            <div class="chip" data-value="female">女</div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>院校</label>
+          <div class="chip-group" data-field="院校">
+            <div class="chip active-vip" data-value="">不限</div>
+            <div class="chip" data-value="985">985</div>
+            <div class="chip" data-value="211">211</div>
+            <div class="chip" data-value="double_first">双一流院校</div>
+            <div class="chip" data-value="overseas">留学</div>
+            <div class="chip" data-value="famous">国内外名校</div>
+            <div class="chip" data-value="public_bachelor">公办本科</div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>近期没有看过</label>
+          <div class="chip-group" data-field="近期没有看过">
+            <div class="chip active-vip" data-value="">不限</div>
+            <div class="chip" data-value="14_days">近14天没有</div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>是否与同事交换简历</label>
+          <div class="chip-group" data-field="是否与同事交换简历">
+            <div class="chip active-vip" data-value="">不限</div>
+            <div class="chip" data-value="no_recent">近一个月没有</div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>跳槽频率</label>
+          <div class="chip-group" data-field="跳槽频率">
+            <div class="chip active-vip" data-value="">不限</div>
+            <div class="chip" data-value="stable">5年少于3份</div>
+            <div class="chip" data-value="avg_year">平均每份工作大于1年</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 普通筛选 -->
+      <div class="normal-container">
+        <div class="normal-title">普通筛选条件</div>
+
+        <div class="field">
+          <label>学历要求</label>
+          <div class="chip-group" data-field="学历要求">
+            <div class="chip active" data-value="">不限</div>
+            <div class="chip" data-value="middle">初中及以下</div>
+            <div class="chip" data-value="technical">中专/中技</div>
+            <div class="chip" data-value="high_school">高中</div>
+            <div class="chip" data-value="college">大专</div>
+            <div class="chip" data-value="bachelor">本科</div>
+            <div class="chip" data-value="master">硕士</div>
+            <div class="chip" data-value="doctor">博士</div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>经验要求</label>
+          <div class="chip-group" data-field="经验要求">
+            <div class="chip active" data-value="">不限</div>
+            <div class="chip" data-value="campus">在校/应届</div>
+            <div class="chip" data-value="grad_25">25年毕业</div>
+            <div class="chip" data-value="grad_26">26年毕业</div>
+            <div class="chip" data-value="grad_after_26">26年后毕业</div>
+            <div class="chip" data-value="under_1yr">1年以内</div>
+            <div class="chip" data-value="1-3yr">1-3年</div>
+            <div class="chip" data-value="3-5yr">3-5年</div>
+            <div class="chip" data-value="5-10yr">5-10年</div>
+            <div class="chip" data-value="10yr_plus">10年以上</div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>求职意向</label>
+          <div class="chip-group" data-field="求职意向">
+            <div class="chip active" data-value="">不限</div>
+            <div class="chip" data-value="resigned">离职-随时到岗</div>
+            <div class="chip" data-value="employed_no">在职-暂不考虑</div>
+            <div class="chip" data-value="employed_open">在职-考虑机会</div>
+            <div class="chip" data-value="employed_month">在职-月内到岗</div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>薪资待遇</label>
+          <div class="chip-group" data-field="薪资待遇[单选]">
+            <div class="chip active" data-value="">不限</div>
+            <div class="chip" data-value="under_3k">3K以下</div>
+            <div class="chip" data-value="3-5k">3-5K</div>
+            <div class="chip" data-value="5-10k">5-10K</div>
+            <div class="chip" data-value="10-20k">10-20K</div>
+            <div class="chip" data-value="20-50k">20-50K</div>
+            <div class="chip" data-value="50k_plus">50K以上</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 匹配规则 -->
+    <div class="form-section">
+      <div class="form-section-title">匹配规则</div>
+      <div id="rulesContainer">
+        <!-- 动态通过 JS 渲染 -->
+      </div>
+      <button class="btn btn-secondary" id="btnAddRule" style="width: 100%; font-size: 12px; border-style: dashed;">+ 添加匹配规则</button>
+    </div>
+
+    <!-- 打招呼话术 -->
+    <div class="form-section">
+      <div class="form-section-title">打招呼话术内容</div>
+      <div id="messagesContainer">
+        <!-- 动态通过 JS 渲染 -->
+      </div>
+      <button class="btn btn-secondary" id="btnAddMessage" style="width: 100%; font-size: 12px; border-style: dashed;">+ 添加打招呼话术</button>
+      <div style="font-size: 11px; color: var(--muted); margin-top: 8px; line-height: 1.5;">
+        💡 设置多条打招呼话术时，系统将按顺序逐条发送给每位候选人。
+      </div>
+    </div>
+
+    <!-- 自动回复话术（候选人主动打招呼且符合岗位条件后回复） -->
+    <div class="form-section">
+      <div class="form-section-title">自动回复话术</div>
+      <div id="replyMessagesContainer">
+        <!-- 动态通过 JS 渲染 -->
+      </div>
+      <button class="btn btn-secondary" id="btnAddReplyMessage" style="width: 100%; font-size: 12px; border-style: dashed;">+ 添加回复话术</button>
+      <div style="font-size: 11px; color: var(--muted); margin-top: 8px; line-height: 1.5;">
+        💡 候选人主动打招呼且符合本岗位匹配条件时，系统按顺序逐条回复以上内容。
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;cursor:pointer;">
+        <input type="checkbox" id="isDefaultJob" style="width:16px;height:16px;"> 设为默认兜底岗位（沟通职位未匹配到任何已配置岗位时，改用本岗位话术回复）
+      </label>
+    </div>
+
+    <!-- 回复设置（按岗位定制自动回复引擎；可选。不勾选则不改动回复配置，保持默认全岗位行为） -->
+    <div class="form-section">
+      <div class="form-section-title">回复设置（自动回复引擎，可选）</div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+        <input type="checkbox" id="replyCustomEnable" style="width:16px;height:16px;"> 为本岗位定制回复设置
+      </label>
+      <div id="replyCustomBody" style="display:none;margin-top:12px;">
+        <div class="field">
+          <label for="replyAutoLimit">自动回复人数上限（1–20）</label>
+          <input class="input" id="replyAutoLimit" type="number" min="1" max="20" value="5" style="max-width:140px;">
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:8px;">
+          <input type="checkbox" id="replyKeywordReply" style="width:16px;height:16px;" checked> 关键词回复
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:12px;">
+          <input type="checkbox" id="replyAiReply" style="width:16px;height:16px;" checked> 大模型回复
+        </label>
+        <div class="field">
+          <label for="replyKnowledgeBase">岗位知识库（供大模型回复参考）</label>
+          <textarea class="textarea" id="replyKnowledgeBase" maxlength="5000" placeholder="该岗位的业务介绍、常见问答、薪资范围、工作地点等，供大模型生成回复时参考。"></textarea>
+        </div>
+      </div>
+      <div style="font-size: 11px; color: var(--muted); margin-top: 8px; line-height: 1.6;">
+        💡 不勾选时本岗位沿用默认「全岗位」回复行为（用上面的自动回复话术），无需任何配置；勾选后可单独设定上限、回复方式与知识库。注意：一旦为任一岗位定制，自动回复即切换为「按岗位白名单」模式，未定制的岗位将不再自动回复。
+      </div>
+    </div>
+
+    <!-- 保存按钮 -->
+    <div class="save-wrapper">
+      <button class="btn-primary" id="btnSave">💾 保存配置</button>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" style="position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1d1d1f;color:#fff;padding:10px 24px;border-radius:8px;font-size:13px;z-index:999;opacity:0;transition:opacity 0.3s;pointer-events:none"></div>
+
+  <script src="js/greeting-config.js"></script>
+</body>
+</html>

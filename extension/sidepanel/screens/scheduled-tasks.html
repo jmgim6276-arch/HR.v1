@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>打招呼定时任务</title>
+  <link rel="stylesheet" href="shared.css">
+  <style>
+    .task-list { display: flex; flex-direction: column; gap: 10px; }
+    .task-item { background: var(--surface); border-radius: var(--radius-md); padding: 14px; border: 1px solid var(--border-soft); }
+    .task-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .task-name { font-weight: 600; font-size: 15px; }
+
+    .status-toggle { position: relative; display: inline-block; width: 32px; height: 18px; }
+    .status-toggle input { opacity: 0; width: 0; height: 0; }
+    .status-toggle .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: var(--border); transition: .2s; border-radius: 18px; }
+    .status-toggle .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 2px; bottom: 2px; background-color: white; transition: .2s; border-radius: 50%; }
+    .status-toggle input:checked + .slider { background-color: var(--success); }
+    .status-toggle input:checked + .slider:before { transform: translateX(14px); }
+
+    .task-info { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+    .task-jobs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+    .job-tag { background: color-mix(in srgb, var(--accent), transparent 90%); color: var(--accent); padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 500; }
+    .task-actions { display: flex; justify-content: flex-end; gap: 12px; padding-top: 8px; border-top: 1px solid var(--border-soft); }
+    .action-icon { color: var(--muted); cursor: pointer; font-size: 12px; }
+    .action-icon:hover { color: var(--fg); }
+
+    .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); display: none; align-items: center; justify-content: center; z-index: 100; }
+    .modal { background: var(--bg); width: 90%; max-width: 360px; max-height: 90vh; border-radius: var(--radius-lg); padding: 20px; overflow-y: auto; }
+
+    .cycle-type { display: flex; gap: 10px; margin-bottom: 12px; }
+    .cycle-option { flex: 1; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); text-align: center; font-size: 13px; cursor: pointer; transition: all 0.2s; }
+    .cycle-option.active { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent), transparent 95%); }
+    .day-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: 6px; }
+    .day-btn { height: 32px; border: 1px solid var(--border); border-radius: 6px; display: grid; place-items: center; font-size: 11px; cursor: pointer; transition: all 0.15s; }
+    .day-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+    .day-btn:hover:not(.active) { background: var(--surface); }
+
+    .linked-job-item { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 13px; }
+    .linked-job-item input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); }
+    .linked-jobs-list { max-height: 100px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px; }
+  </style>
+</head>
+<body>
+  <div class="panel-content">
+    <button class="btn btn-primary" style="width:100%;margin-bottom:var(--space-4)" id="btnAddTask">+ 新增定时任务</button>
+    <div id="schedulerStatus" style="display:none;background:var(--surface);border-radius:var(--radius-md);padding:10px 14px;margin-bottom:10px;border:1px solid var(--border-soft);font-size:12px;color:var(--muted)">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span id="statusInfo">调度器状态加载中...</span>
+        <span id="activeTaskName" style="color:var(--success);font-weight:600"></span>
+      </div>
+    </div>
+    <div class="task-list" id="taskList"></div>
+    <div id="emptyState" style="text-align:center;padding:40px 20px;color:var(--muted);display:none">
+      <div style="font-size:40px;margin-bottom:12px;opacity:0.4">📅</div>
+      <p style="margin:0">暂无定时任务</p>
+    </div>
+  </div>
+
+  <!-- 定时任务弹窗 -->
+  <div class="modal-overlay" id="taskModal">
+    <div class="modal">
+      <h3 style="margin-top:0;font-size:16px" id="modalTitle">配置定时任务</h3>
+      <div class="field">
+        <label>任务名称</label>
+        <input type="text" class="input" id="taskNameInput" placeholder="输入任务名称">
+      </div>
+      <div class="field">
+        <label>运行周期类型</label>
+        <div class="cycle-type">
+          <div class="cycle-option" data-cycle="weekly">按周</div>
+          <div class="cycle-option" data-cycle="monthly">按月</div>
+        </div>
+      </div>
+      <div id="weeklyCycle" class="field" style="display:none">
+        <label>选择周几</label>
+        <div class="day-grid" id="weekDayGrid">
+          <div class="day-btn" data-day="0">日</div>
+          <div class="day-btn" data-day="1">一</div>
+          <div class="day-btn" data-day="2">二</div>
+          <div class="day-btn" data-day="3">三</div>
+          <div class="day-btn" data-day="4">四</div>
+          <div class="day-btn" data-day="5">五</div>
+          <div class="day-btn" data-day="6">六</div>
+        </div>
+      </div>
+      <div id="monthlyCycle" class="field" style="display:none">
+        <label>选择日期（1-31）</label>
+        <div class="day-grid" id="monthDayGrid"></div>
+      </div>
+      <div class="field">
+        <label>运行时间范围</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="time" step="1" class="input" id="startTimeInput" value="09:00:00" style="flex:1">
+          <span style="color:var(--muted);font-size:13px">至</span>
+          <input type="time" step="1" class="input" id="endTimeInput" value="18:00:00" style="flex:1">
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">精确到秒，任务将在该时间段内运行</div>
+      </div>
+      <div class="field">
+        <label>关联岗位配置</label>
+        <div class="linked-jobs-list" id="linkedJobsList">
+          <!-- 从 jobConfigs 动态填充 -->
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">选择该定时任务要处理的岗位</div>
+      </div>
+      <label style="display:flex;align-items:flex-start;gap:8px;padding:11px;background:var(--surface);border:1px solid var(--border-soft);border-radius:8px;font-size:11px;line-height:1.5;color:var(--muted)">
+        <input type="checkbox" id="taskScopeApproval" style="margin-top:3px">
+        <span>我已审核关联岗位、筛选条件、候选人数量、打招呼话术和运行时间，同意任务在该范围内自动执行。修改任务或范围后需要重新确认。</span>
+      </label>
+      <div style="display:flex;gap:10px;margin-top:20px">
+        <button class="btn btn-secondary" style="flex:1" id="btnCancel">取消</button>
+        <button class="btn btn-primary" style="flex:1" id="btnSave">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" style="position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1d1d1f;color:#fff;padding:10px 24px;border-radius:8px;font-size:13px;z-index:999;opacity:0;transition:opacity 0.3s;pointer-events:none"></div>
+
+  <!-- 确认删除弹窗 -->
+  <div class="modal-overlay" id="confirmModal">
+    <div class="modal" style="width:340px;">
+      <div class="modal-body" style="text-align:center;padding:24px">
+        <div style="font-size:15px;font-weight:500;margin-bottom:16px" id="confirmMessage">确定要删除吗？</div>
+        <div style="display:flex;gap:12px;justify-content:center">
+          <button class="btn btn-secondary" id="confirmCancel">取消</button>
+          <button class="btn btn-danger" id="confirmOk">确定删除</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/scheduled-tasks.js"></script>
+</body>
+</html>

@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>简历打分</title>
+<style>
+  :root {
+    --accent: #5b5bd6; --ok: #30a46c; --warn: #e5484d; --muted: #6b7280;
+    --border: #e8e9ee; --surface: #f6f7f9; --accent-bg: #eeeefb;
+    --font-display: -apple-system, "SF Pro Display", "Segoe UI", Roboto, "PingFang SC", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "SF Pro Text", "Segoe UI", Roboto, "PingFang SC", sans-serif; margin: 0; padding: 14px; color: #1c1d21; }
+  h2 { font-family: var(--font-display); font-size: 17px; margin: 0 0 8px; font-weight: 600; letter-spacing: -0.01em; }
+  .hint { font-size: 11px; color: var(--muted); margin: 0 0 12px; line-height: 1.6; }
+  #status { font-size: 12px; color: var(--muted); text-align: center; margin: 6px 0; min-height: 16px; }
+  .empty { text-align: center; color: var(--muted); font-size: 13px; padding: 40px 0; }
+  .card { border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-bottom: 12px; background: #fff; box-shadow: 0 1px 2px rgba(20,21,26,0.05); }
+  .card-head { display: flex; align-items: center; gap: 10px; }
+  .who { flex: 1; min-width: 0; }
+  .who .name { font-size: 14px; font-weight: 600; }
+  .who .pos { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .score { text-align: center; flex: none; width: 64px; }
+  .score .num { font-family: var(--font-display); font-size: 28px; font-weight: 700; color: var(--accent); line-height: 1; }
+  .score .num.none { font-size: 13px; color: var(--muted); font-weight: 500; }
+  .score .rec { font-size: 10px; color: var(--muted); margin-top: 3px; }
+  .summary { font-size: 12px; color: #3a3b3f; line-height: 1.6; margin-top: 10px; }
+  .meta { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; gap: 8px; }
+  .time { font-size: 10px; color: var(--muted); }
+  .rescore { flex: none; padding: 6px 14px; border: 1px solid var(--border); border-radius: 7px; background: var(--accent-bg); color: var(--accent); font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; }
+  .rescore:hover:not(:disabled) { background: #e4e4f8; }
+  .rescore:disabled { opacity: .45; cursor: not-allowed; }
+  .rescore.doing { opacity: .6; }
+  .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  .refresh { border: 1px solid var(--border); background: #fff; color: var(--muted); border-radius: 7px; padding: 5px 12px; font-size: 12px; cursor: pointer; font-family: inherit; }
+</style>
+</head>
+<body>
+  <h2>🎯 人才库简历打分</h2>
+  <p class="hint">入库的简历会按对应岗位 JD 自动打分（需 VIP + 已配置大模型）。岗位 JD 在「外呼配置」抓取；可对单条「重打」。</p>
+  <div class="toolbar">
+    <span id="count" style="font-size:12px;color:var(--muted)"></span>
+    <button class="refresh" id="btnRefresh">刷新</button>
+  </div>
+  <div id="status"></div>
+  <div id="list"></div>
+  <div class="empty" id="empty" style="display:none;">人才库暂无记录</div>
+
+  <script src="js/resume-score.js"></script>
+</body>
+</html>

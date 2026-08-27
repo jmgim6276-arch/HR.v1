@@ -1,0 +1,34 @@
+# systemd 守护进程配置 —— 让后端开机自启、崩溃自动重启
+# 放到服务器的 /etc/systemd/system/zhipin-backend.service
+#
+# 用法：
+#   sudo cp zhipin-backend.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now zhipin-backend
+#   sudo systemctl status zhipin-backend      # 看运行状态
+#   sudo journalctl -u zhipin-backend -f       # 看实时日志（验证码也打印在这里）
+#
+# 改了代码后：sudo systemctl restart zhipin-backend
+
+[Unit]
+Description=凯旋智聘 后端 API
+After=network.target
+
+[Service]
+Type=simple
+# ↓↓↓ 按你的实际情况改这三行 ↓↓↓
+User=ubuntu
+WorkingDirectory=/home/ubuntu/app/backend
+ExecStart=/usr/bin/python3 -m uvicorn main:app --host 127.0.0.1 --port 8080
+
+# 生产环境变量（务必改成你自己的值）
+Environment=DEV_MODE=false
+Environment=JWT_SECRET=在这里填一串随机字符_用 openssl rand -hex 32 生成
+Environment=ADMIN_KEY=在这里填你的后台口令_别用默认值
+Environment=DB_PATH=/home/ubuntu/app/backend/app.db
+
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

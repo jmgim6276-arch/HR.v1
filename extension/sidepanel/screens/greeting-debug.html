@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>打招呼调试</title>
+  <link rel="stylesheet" href="shared.css">
+  <style>
+    .desc-text {
+      font-size: var(--text-sm);
+      color: var(--muted);
+      line-height: 1.6;
+      margin-bottom: var(--space-4);
+    }
+    .desc-text strong { color: var(--fg); }
+
+    /* 测试按钮 */
+    .btn-test {
+      width: 100%;
+      padding: 12px;
+      font-size: 15px;
+      font-weight: 600;
+      border: none;
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-test:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .btn-test:not(:disabled):hover {
+      transform: translateY(-1px);
+    }
+
+    /* 结果卡片（概要） */
+    .result-card {
+      margin-top: var(--space-4);
+      padding: var(--space-4);
+      border-radius: var(--radius-md);
+      background: var(--surface);
+      border: 1px solid var(--border-soft);
+      display: none;
+    }
+    .result-card.visible { display: block; }
+
+    .result-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border-soft);
+      font-size: 13px;
+    }
+    .result-row:last-child { border-bottom: none; }
+    .result-label { color: var(--muted); }
+    .result-value { font-weight: 600; }
+    .result-value.success { color: var(--success, #16a34a); }
+    .result-value.fail { color: var(--danger, #dc2626); }
+    .result-value.warn { color: var(--warning, #d97706); }
+
+    /* 诊断区（可折叠） */
+    .diag-section {
+      margin-top: var(--space-4);
+    }
+    .diag-section summary {
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--muted);
+      padding: 6px 0;
+    }
+    .diag-section[open] summary { color: var(--fg); }
+
+    /* 诊断结论 */
+    #diagnosisBox {
+      margin-top: var(--space-2);
+      padding: var(--space-3);
+      background: #1a1a2e;
+      border-radius: var(--radius-md);
+      font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+      font-size: 12px;
+      line-height: 1.7;
+      color: #e4e4e7;
+      white-space: pre-wrap;
+      word-break: break-all;
+      display: none;
+    }
+    #diagnosisBox.visible { display: block; }
+    .diag-line-green { color: #4ade80; }
+    .diag-line-yellow { color: #fbbf24; }
+    .diag-line-red { color: #f87171; }
+    .diag-line-info { color: #94a3b8; }
+
+    /* 数据表格 */
+    .data-table-wrap {
+      margin-top: var(--space-2);
+      overflow-x: auto;
+      display: none;
+    }
+    .data-table-wrap.visible { display: block; }
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+      font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+    }
+    .data-table th, .data-table td {
+      padding: 4px 6px;
+      border: 1px solid var(--border-soft);
+      text-align: left;
+      white-space: nowrap;
+      max-width: 200px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .data-table th {
+      background: var(--surface);
+      font-weight: 600;
+      position: sticky;
+      top: 0;
+    }
+    .data-table tr:hover td { background: rgba(255,255,255,0.03); }
+    .data-table .cell-yes { color: #4ade80; }
+    .data-table .cell-no { color: #f87171; }
+    .data-table .cell-warn { color: #fbbf24; }
+
+    /* 日志区域 */
+    .log-section {
+      margin-top: var(--space-4);
+    }
+    .log-section summary {
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--muted);
+      padding: 4px 0;
+    }
+    #logContainer {
+      margin-top: var(--space-2);
+      padding: var(--space-3);
+      background: #1a1a2e;
+      border-radius: var(--radius-md);
+      max-height: 300px;
+      overflow-y: auto;
+      font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+      font-size: 11px;
+      line-height: 1.7;
+      color: #e4e4e7;
+    }
+    #logContainer .log-line { white-space: pre-wrap; word-break: break-all; }
+    #logContainer .log-line.log-debug { color: #94a3b8; }
+    #logContainer .log-line.log-warn { color: #fbbf24; }
+    #logContainer .log-line.log-error { color: #f87171; }
+    #logContainer .log-line.log-result { color: #4ade80; font-weight: 600; }
+
+    /* 状态指示 */
+    .status-hint {
+      margin-top: var(--space-3);
+      padding: var(--space-3);
+      border-radius: var(--radius-md);
+      font-size: 12px;
+      line-height: 1.5;
+      display: none;
+    }
+    .status-hint.visible { display: block; }
+    .status-hint.info { background: #f0f7ff; border: 1px solid #d0e3f7; color: #1d4d8a; }
+    .status-hint.success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; }
+    .status-hint.error { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+
+    /* 容器计数徽标 */
+    .badge {
+      display: inline-block;
+      padding: 1px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+      margin-left: 6px;
+    }
+    .badge-green { background: #166534; color: #bbf7d0; }
+    .badge-yellow { background: #92400e; color: #fde68a; }
+    .badge-red { background: #991b1b; color: #fecaca; }
+    .badge-gray { background: #333; color: #aaa; }
+  </style>
+</head>
+<body>
+  <div class="panel-content">
+    <h2 class="section-title">🔧 打招呼调试</h2>
+
+    <p class="desc-text">
+      测试 BOSS 直聘推荐页面的<strong>滚动加载</strong>功能是否正常。
+      请在 BOSS 直聘推荐页面（<code>/web/geek/recommend</code>）执行此测试。
+    </p>
+
+    <!-- 测试按钮 -->
+    <button class="btn-test btn-primary" id="btnScrollTest" disabled>
+      ⏳ 检测页面中...
+    </button>
+
+    <!-- 手动滚动测试按钮（先诊断，再测试） -->
+    <button class="btn-test btn-success" id="btnScrollNow" disabled style="margin-top:8px;display:none;">
+      ⬇️ 测试 iframe 滚动
+    </button>
+
+    <!-- 读取卡片/按钮结构（绕开 F12 反调试） -->
+    <button class="btn-test btn-primary" id="btnInspectGreet" style="margin-top:8px;">
+      🔍 读取卡片/打招呼按钮结构
+    </button>
+    <details class="diag-section" id="inspectWrap" style="display:none;margin-top:8px;" open>
+      <summary>📇 卡片 / 按钮结构（把下面内容发给我）</summary>
+      <pre id="inspectResult" style="white-space:pre-wrap;word-break:break-all;font-size:11px;max-height:320px;overflow:auto;background:var(--surface-warm,#f5f5f5);padding:8px;border-radius:6px;"></pre>
+    </details>
+
+    <!-- 提示 -->
+    <div class="status-hint info visible" id="hintInfo">
+      请确保在 BOSS 直聘推荐页面进行测试。
+    </div>
+    <div class="status-hint success" id="hintSuccess"></div>
+    <div class="status-hint error" id="hintError"></div>
+
+    <!-- ─── 概要结果 ─── -->
+    <div class="result-card" id="resultCard">
+      <div class="result-row">
+        <span class="result-label">可滚动容器</span>
+        <span class="result-value" id="rContainer">-</span>
+      </div>
+      <div class="result-row">
+        <span class="result-label">滚动结果</span>
+        <span class="result-value" id="rScroll">-</span>
+      </div>
+      <div class="result-row">
+        <span class="result-label">列表到底</span>
+        <span class="result-value" id="rEndOfList">-</span>
+      </div>
+      <div class="result-row">
+        <span class="result-label">文档上下文数</span>
+        <span class="result-value" id="rDocCount">-</span>
+      </div>
+      <div class="result-row">
+        <span class="result-label">iframe 数</span>
+        <span class="result-value" id="rFrameCount">-</span>
+      </div>
+    </div>
+
+    <!-- ─── 诊断结论 ─── -->
+    <details class="diag-section" id="diagConclusion">
+      <summary>🔍 诊断结论</summary>
+      <div id="diagnosisBox"></div>
+    </details>
+
+    <!-- ─── Iframe 诊断表 ─── -->
+    <details class="diag-section" id="diagFrames">
+      <summary>🖼️ Iframe 诊断</summary>
+      <div class="data-table-wrap" id="frameTableWrap">
+        <table class="data-table" id="frameTable">
+          <thead><tr>
+            <th>名称</th>
+            <th>可访问</th>
+            <th>iframe 尺寸</th>
+            <th>父容器</th>
+            <th>父容器 H</th>
+            <th>父 overflowY</th>
+            <th>.frame-box H</th>
+            <th>.alive-wrap H</th>
+            <th>alive overflowY</th>
+            <th>内部 docScrollH</th>
+            <th>内部 docClientH</th>
+            <th>可滚动?</th>
+          </tr></thead>
+          <tbody id="frameTableBody"></tbody>
+        </table>
+      </div>
+    </details>
+
+    <!-- ─── 候选容器表 ─── -->
+    <details class="diag-section" id="diagCandidates">
+      <summary>📦 候选滚动容器</summary>
+      <div class="data-table-wrap" id="candidateTableWrap">
+        <table class="data-table" id="candidateTable">
+          <thead><tr>
+            <th>文档</th>
+            <th>选择器</th>
+            <th>标签</th>
+            <th>ID/Class</th>
+            <th>overflowY</th>
+            <th>height</th>
+            <th>maxH</th>
+            <th>scrollH</th>
+            <th>clientH</th>
+            <th>可见</th>
+            <th>可滚动</th>
+            <th>可滚动+</th>
+          </tr></thead>
+          <tbody id="candidateTableBody"></tbody>
+        </table>
+      </div>
+    </details>
+
+    <!-- ─── 暴力扫描可滚动元素 ─── -->
+    <details class="diag-section" id="diagAllScrollable">
+      <summary>🔎 暴力扫描发现的可滚动元素</summary>
+      <div class="data-table-wrap" id="allScrollableTableWrap">
+        <table class="data-table" id="allScrollableTable">
+          <thead><tr>
+            <th>文档</th>
+            <th>标签</th>
+            <th>ID/Class</th>
+            <th>overflowY</th>
+            <th>overflowX</th>
+            <th>scrollH</th>
+            <th>clientH</th>
+            <th>尺寸(W×H)</th>
+            <th>可见</th>
+          </tr></thead>
+          <tbody id="allScrollableTableBody"></tbody>
+        </table>
+      </div>
+    </details>
+
+    <!-- ⬇️ 滚动测试结果 -->
+    <details class="diag-section" id="diagScrollTest">
+      <summary>⬇️ 滚动测试结果</summary>
+      <div id="scrollTestResult" class="result-card" style="display:none;">
+        <div class="result-row">
+          <span class="result-label">滚动目标</span>
+          <span class="result-value" id="stContainer">-</span>
+        </div>
+        <div class="result-row">
+          <span class="result-label">滚动前 scrollTop</span>
+          <span class="result-value" id="stBefore">-</span>
+        </div>
+        <div class="result-row">
+          <span class="result-label">滚动后 scrollTop</span>
+          <span class="result-value" id="stAfter">-</span>
+        </div>
+        <div class="result-row">
+          <span class="result-label">scrollHeight</span>
+          <span class="result-value" id="stScrollH">-</span>
+        </div>
+        <div class="result-row">
+          <span class="result-label">clientHeight</span>
+          <span class="result-value" id="stClientH">-</span>
+        </div>
+        <div class="result-row">
+          <span class="result-label">是否已滚动</span>
+          <span class="result-value" id="stScrolled">-</span>
+        </div>
+        <div class="result-row">
+          <span class="result-label">_scrollForMore 结果</span>
+          <span class="result-value" id="stCanScroll">-</span>
+        </div>
+      </div>
+    </details>
+
+    <!-- 详细日志 -->
+    <div class="log-section">
+      <details>
+        <summary>📋 详细日志</summary>
+        <div id="logContainer">
+          <div class="log-line log-debug">等待测试...</div>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" style="position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1d1d1f;color:#fff;padding:10px 24px;border-radius:8px;font-size:13px;z-index:999;opacity:0;transition:opacity 0.3s;pointer-events:none"></div>
+
+  <script src="js/greeting-debug.js"></script>
+</body>
+</html>

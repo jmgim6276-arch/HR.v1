@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>自动回复运行控制台</title>
+  <link rel="stylesheet" href="shared.css">
+  <style>
+    .config-card { background: var(--surface); border-radius: var(--radius-lg); padding: var(--space-4); margin-bottom: var(--space-5); }
+    .switch-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; }
+    .switch-row:not(:last-child) { border-bottom: 1px solid var(--border-soft); }
+    .switch-label { font-size: 15px; font-weight: 500; }
+
+    .switch { position: relative; display: inline-block; width: 50px; height: 28px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: var(--border); transition: .3s; border-radius: 34px; }
+    .slider:before { position: absolute; content: ""; height: 24px; width: 24px; left: 2px; bottom: 2px; background-color: white; transition: .3s; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    input:checked + .slider { background-color: var(--success); }
+    input:checked + .slider:before { transform: translateX(22px); }
+
+    .control-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: var(--space-5); }
+
+    .status-banner { background: color-mix(in srgb, var(--success), transparent 90%); color: var(--success); padding: 12px; border-radius: var(--radius-md); display: flex; align-items: center; gap: 10px; font-size: var(--text-sm); margin-bottom: var(--space-5); }
+    .status-pulse { width: 8px; height: 8px; background: var(--success); border-radius: 50%; animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 color-mix(in srgb, var(--success), transparent 30%); } 70% { transform: scale(1); box-shadow: 0 0 0 6px color-mix(in srgb, var(--success), transparent 100%); } 100% { transform: scale(0.95); box-shadow: 0 0 0 0 color-mix(in srgb, var(--success), transparent 100%); } }
+
+    .log-container { background: #1d1d1f; color: #f5f5f7; border-radius: var(--radius-md); padding: 12px; height: 280px; overflow-y: auto; font-family: var(--font-mono); font-size: 11px; line-height: 1.6; }
+    .log-entry { display: flex; gap: 6px; margin-bottom: 2px; }
+    .log-time { color: #86868b; flex-shrink: 0; }
+    .log-sys { color: #ff9f0a; }
+    .log-ai { color: #bf5af2; }
+    .log-kw { color: #2997ff; }
+    .log-exec { color: #32d74b; }
+    .log-warn { color: #ff6b6b; }
+    .log-incoming { color: #30d158; }  /* 绿色 - 候选人发来的消息 */
+    .log-outgoing { color: #5e5ce6; }  /* 蓝色 - 发送给候选人的话术 */
+
+    /* 日志控制按钮样式 */
+    .btn-sm { padding: 4px 10px; font-size: 11px; border-radius: 4px; cursor: pointer; border: 1px solid var(--border); background: transparent; color: var(--text); transition: all 0.2s; white-space: nowrap; }
+    .btn-sm:hover { background: var(--border); }
+    .btn-outline { border-color: var(--border); }
+  </style>
+</head>
+<body>
+  <div class="panel-content">
+    <h2 class="section-title">运行控制台</h2>
+
+    <div class="control-grid">
+      <button class="btn btn-primary" id="btnStart">启动助手</button>
+      <button class="btn btn-secondary" id="btnPause" disabled>暂停</button>
+      <button class="btn btn-secondary" id="btnResume" style="display:none">恢复</button>
+      <button class="btn btn-danger" id="btnStop" disabled style="display:none">停止运行</button>
+    </div>
+
+    <div id="runningIndicator" style="display:none">
+      <div class="status-banner"><div class="status-pulse"></div>自动回复助手正在运行中...</div>
+    </div>
+
+    <!-- 状态提示（暂停原因等） -->
+    <div id="statusText" style="display:none; background: color-mix(in srgb, var(--danger), transparent 90%); color: var(--danger); padding: 10px 14px; border-radius: var(--radius-md); font-size: 12px; margin-bottom: var(--space-5); line-height: 1.5;"></div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <h3 style="font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px;margin:0">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M2 12h20M2 6h20M2 18h20"/></svg>
+        实时运行日志
+      </h3>
+      <div style="display:flex;gap:6px">
+        <button class="btn-sm btn-outline" id="btnClearLog" title="清空日志">清空日志</button>
+        <button class="btn-sm btn-outline" id="btnExportLog" title="导出日志">导出日志</button>
+      </div>
+    </div>
+    <div class="log-container" id="logContainer">
+      <div class="log-entry"><span class="log-time">--:--:--</span> <span class="log-sys">[系统]</span> 等待启动...</div>
+    </div>
+  </div>
+
+  <script src="js/reply-running.js"></script>
+  <div id="toast" style="position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1d1d1f;color:#fff;padding:10px 24px;border-radius:8px;font-size:13px;z-index:999;opacity:0;transition:opacity 0.3s;pointer-events:none"></div>
+</body>
+</html>

@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>回复拟人频率</title>
+  <link rel="stylesheet" href="shared.css">
+</head>
+<body>
+  <div class="panel-content">
+    <h2 class="section-title" style="font-size:17px">回复频率配置</h2>
+
+    <div class="field">
+      <label>回复消息频率（秒）</label>
+      <div style="display:flex;align-items:center;gap:8px">
+        <input type="number" class="input num" id="sendDelayMin" value="3" style="width:70px">
+        <span style="font-size:13px;color:var(--muted)">至</span>
+        <input type="number" class="input num" id="sendDelayMax" value="8" style="width:70px">
+        <span style="font-size:13px;color:var(--muted)">秒</span>
+      </div>
+      <div style="font-size:11px;color:var(--meta);margin-top:6px">模拟人工输入习惯，回复单条消息的随机延迟。</div>
+    </div>
+
+    <div class="field">
+      <label>等待候选人消息间隔（秒）</label>
+      <div style="display:flex;align-items:center;gap:8px">
+        <input type="number" class="input num" id="replyWait" value="60" style="width:100px">
+        <span style="font-size:13px;color:var(--muted)">秒</span>
+      </div>
+      <div style="font-size:11px;color:var(--meta);margin-top:6px">发送完消息后，等待候选人回复的最大时长。</div>
+    </div>
+
+    <div class="field">
+      <label>处理候选人间隔（秒）</label>
+      <div style="display:flex;align-items:center;gap:8px">
+        <input type="number" class="input num" id="userInterval" value="30" style="width:100px">
+        <span style="font-size:13px;color:var(--muted)">秒</span>
+      </div>
+      <div style="font-size:11px;color:var(--meta);margin-top:6px">处理完当前对话后，进入下一个对话的间隔。</div>
+    </div>
+
+    <div class="field">
+      <label>连续运行时长设置</label>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:13px;color:var(--muted)">运行</span>
+        <input type="number" class="input num" id="runDuration" value="60" style="width:70px">
+        <span style="font-size:13px;color:var(--muted)">分钟，暂停</span>
+        <input type="number" class="input num" id="pauseDuration" value="10" style="width:70px">
+        <span style="font-size:13px;color:var(--muted)">分钟</span>
+      </div>
+      <div style="font-size:11px;color:var(--meta);margin-top:6px">设置助手在连续运行多久后自动暂停休息。</div>
+    </div>
+
+    <div class="field">
+      <label>单次运行最大时长</label>
+      <div style="display:flex;align-items:center;gap:8px">
+        <input type="number" class="input num" id="maxRunDuration" value="4" style="width:70px" min="1" max="4">
+        <span style="font-size:13px;color:var(--muted)">小时</span>
+      </div>
+      <div style="font-size:11px;color:var(--meta);margin-top:6px">单次自动回复运行的最大时长，超过后将自动暂停，最长不超过 4 小时。</div>
+    </div>
+
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" style="position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1d1d1f;color:#fff;padding:10px 24px;border-radius:8px;font-size:13px;z-index:999;opacity:0;transition:opacity 0.3s;pointer-events:none"></div>
+
+  <script src="js/reply-interval.js"></script>
+</body>
+</html>

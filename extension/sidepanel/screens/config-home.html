@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>岗位配置</title>
+  <link rel="stylesheet" href="shared.css">
+  <style>
+    .cfg-card { display: flex; align-items: center; gap: var(--space-3); background: var(--surface); border: 1px solid var(--border-soft); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-3); cursor: pointer; transition: border-color .15s, box-shadow .15s; }
+    .cfg-card:hover { border-color: var(--accent); box-shadow: var(--shadow-sm); }
+    .cfg-ico { width: 38px; height: 38px; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; background: var(--accent-bg); color: var(--accent); flex-shrink: 0; }
+    .cfg-ico svg { width: 20px; height: 20px; }
+    .cfg-body { flex: 1; min-width: 0; }
+    .cfg-body h3 { margin: 0 0 4px; font-size: 15px; color: var(--fg); }
+    .cfg-body p { margin: 0; font-size: var(--text-xs); color: var(--fg-2); line-height: 1.5; }
+    .cfg-arrow { color: var(--muted); flex-shrink: 0; }
+    .hint { font-size: var(--text-xs); color: var(--fg-2); margin-bottom: var(--space-4); line-height: 1.6; }
+  </style>
+</head>
+<body>
+  <div class="panel-content">
+    <h2 class="section-title">岗位配置</h2>
+    <div class="hint">「打招呼」与「自动回复」共用一套岗位配置，在打招呼配置页内一并管理（含回复设置），无需分开配置。</div>
+
+    <div class="cfg-card" data-target="screens/job-list.html">
+      <div class="cfg-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg></div>
+      <div class="cfg-body">
+        <h3>岗位配置</h3>
+        <p>岗位列表、BOSS 筛选条件、打招呼/回复话术、回复设置与默认兜底岗位。</p>
+      </div>
+      <div class="cfg-arrow">›</div>
+    </div>
+  </div>
+  <script src="js/config-home.js"></script>
+</body>
+</html>

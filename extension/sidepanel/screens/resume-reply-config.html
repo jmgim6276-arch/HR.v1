@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>简历回复配置</title>
+  <link rel="stylesheet" href="shared.css">
+  <style>
+    .config-card {
+      background: var(--surface); border: 1px solid var(--border-soft);
+      border-radius: var(--radius-lg); padding: var(--space-4); margin-bottom: var(--space-4);
+    }
+    .intro { margin: 0; color: var(--muted); font-size: var(--text-xs); line-height: 1.65; }
+    .label-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+    .label-row label { margin: 0; }
+    .char-count { color: var(--meta); font-size: 11px; }
+    .message-list { display: grid; gap: 12px; }
+    .message-item { border: 1px solid var(--border-soft); border-radius: var(--radius-md); padding: 12px; background: var(--surface-warm); }
+    .message-actions { display: flex; align-items: center; gap: 8px; }
+    .remove-message { color: var(--danger); border: 0; background: transparent; padding: 3px 5px; border-radius: 5px; cursor: pointer; font: inherit; font-size: 11px; }
+    .remove-message:hover { background: #fff1f1; }
+    .remove-message:focus-visible, .add-message:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .message-error { min-height: 17px; margin-top: 5px; color: var(--danger); font-size: 11px; }
+    .message-item.invalid .textarea { border-color: var(--danger); }
+    .list-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+    .list-title { font-size: 14px; font-weight: 600; }
+    .list-desc { color: var(--muted); font-size: 11px; line-height: 1.5; margin-top: 3px; }
+    .add-message { white-space: nowrap; }
+    .placeholder-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .placeholder-tag { padding: 3px 7px; border-radius: 5px; background: var(--accent-bg); color: var(--accent); font-size: 11px; }
+    .action-row { display: flex; justify-content: flex-end; gap: 10px; }
+    .notice {
+      display: flex; gap: 10px; align-items: flex-start; padding: 12px;
+      border: 1px solid var(--border-soft); border-radius: var(--radius-md);
+      color: var(--muted); font-size: 11px; line-height: 1.6;
+    }
+    .notice svg { flex-shrink: 0; color: var(--accent); margin-top: 1px; }
+  </style>
+</head>
+<body>
+  <div class="panel-content">
+    <h2 class="section-title">简历回复配置</h2>
+
+    <div class="config-card">
+      <p class="intro">单独配置简历成功入库后的回复话术。每个输入框会作为一条独立消息，按照从上到下的顺序发送；不会覆盖岗位回复、大模型提示词或关键词规则。</p>
+    </div>
+
+    <div class="config-card">
+      <div class="list-toolbar">
+        <div>
+          <div class="list-title">客户自定义回复内容</div>
+          <div class="list-desc">最多 5 条，每条最多 1000 字；发送前会替换下方变量。</div>
+        </div>
+        <button class="btn btn-secondary add-message" id="btnAddMessage" type="button">添加一条</button>
+      </div>
+      <div class="message-list" id="messageList" aria-live="polite"></div>
+      <div class="placeholder-list" aria-label="可用变量">
+        <span class="placeholder-tag">{姓名}</span>
+        <span class="placeholder-tag">{岗位}</span>
+      </div>
+    </div>
+
+    <div class="action-row">
+      <button class="btn btn-secondary" id="btnRestore">恢复默认</button>
+      <button class="btn btn-primary" id="btnSave">保存配置</button>
+    </div>
+
+    <div class="notice" style="margin-top:var(--space-4)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      <span>保存话术不会立即发送。只有在“简历采集控制台”主动打开“入库后自动回复”，并在启动前确认后，才会向本轮候选人逐条发送。</span>
+    </div>
+  </div>
+
+  <div id="toast" style="position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1d1d1f;color:#fff;padding:10px 24px;border-radius:8px;font-size:13px;z-index:999;opacity:0;transition:opacity .3s;pointer-events:none"></div>
+  <script src="js/resume-reply-config.js"></script>
+</body>
+</html>

@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>调试设置</title>
+  <link rel="stylesheet" href="shared.css">
+  <style>
+    /* 描述文本 */
+    .desc-text {
+      font-size: var(--text-sm);
+      color: var(--muted);
+      line-height: 1.6;
+      margin-bottom: var(--space-4);
+    }
+    .desc-text strong {
+      color: var(--fg);
+    }
+
+    /* 状态指示器 */
+    .status-row {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      margin-bottom: var(--space-4);
+      padding: var(--space-3);
+      border-radius: var(--radius-md);
+      background: var(--surface);
+      border: 1px solid var(--border-soft);
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .status-dot.active {
+      background: var(--success);
+      box-shadow: 0 0 6px rgba(22, 163, 74, 0.4);
+    }
+    .status-dot.inactive {
+      background: var(--meta);
+    }
+    .status-label {
+      font-size: var(--text-sm);
+      color: var(--fg);
+    }
+    .status-name {
+      font-size: var(--text-sm);
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    /* 按钮行 */
+    .btn-row {
+      display: flex;
+      gap: var(--space-2);
+      margin-top: var(--space-3);
+    }
+    .btn-row .btn {
+      flex: 1;
+    }
+
+    /* 说明区块 */
+    .info-box {
+      margin-top: var(--space-5);
+      padding: var(--space-3);
+      background: #f0f7ff;
+      border-radius: var(--radius-md);
+      border: 1px solid #d0e3f7;
+      font-size: 12px;
+      color: #1d4d8a;
+      line-height: 1.6;
+    }
+    .info-box strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="panel-content">
+    <h2 class="section-title">调试设置</h2>
+
+    <p class="desc-text">
+      设置<strong>候选人姓名过滤</strong>后，自动回复模块将<strong>只处理</strong>该候选人的消息，
+      其他所有候选人的消息都会被跳过。留空则处理所有候选人。
+    </p>
+
+    <!-- 当前过滤状态 -->
+    <div class="status-row" id="statusRow">
+      <span class="status-dot inactive" id="statusDot"></span>
+      <span class="status-label" id="statusLabel">当前未设置姓名过滤，将处理所有候选人</span>
+    </div>
+
+    <!-- 姓名输入 -->
+    <div class="field">
+      <label for="nameFilterInput">候选人姓名</label>
+      <input type="text" class="input" id="nameFilterInput"
+             placeholder="输入候选人姓名，如：张三"
+             autocomplete="off">
+      <div style="font-size:12px;color:var(--muted);margin-top:6px;line-height:1.5">
+        注意：需要<strong>完全匹配</strong>候选人在 BOSS 直聘上显示的名字，不支持模糊匹配。
+      </div>
+    </div>
+
+    <!-- 操作按钮 -->
+    <div class="btn-row">
+      <button class="btn btn-primary" id="btnSave">保存</button>
+      <button class="btn btn-secondary" id="btnClear">清除过滤</button>
+    </div>
+
+    <!-- 说明 -->
+    <div class="info-box">
+      <strong>💡 使用说明</strong>
+      此功能仅在开发者模式下可用。设置姓名过滤后，运行自动回复时系统将只处理指定候选人的消息，
+      其余人的消息自动跳过。如需恢复处理所有候选人，请点击"清除过滤"按钮。
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" style="position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1d1d1f;color:#fff;padding:10px 24px;border-radius:8px;font-size:13px;z-index:999;opacity:0;transition:opacity 0.3s;pointer-events:none"></div>
+
+  <script src="js/reply-debug.js"></script>
+</body>
+</html>

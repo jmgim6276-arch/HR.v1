@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>拟人频率</title>
+  <link rel="stylesheet" href="shared.css">
+  <style>
+    .seg { display: flex; gap: 6px; margin-bottom: var(--space-3); background: var(--surface-warm); padding: 4px; border-radius: var(--radius-md); }
+    .seg button { flex: 1; padding: 8px 10px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--fg-2); font-size: var(--text-sm); font-weight: 600; cursor: pointer; transition: background .15s, color .15s; }
+    .seg button.active { background: var(--surface); color: var(--accent); box-shadow: var(--shadow-sm); }
+    iframe.subframe { width: 100%; border: 0; display: block; height: calc(100vh - 150px); background: transparent; }
+  </style>
+</head>
+<body>
+  <div class="panel-content">
+    <h2 class="section-title">拟人频率</h2>
+    <div class="seg">
+      <button type="button" data-frame="time-interval.html" class="active">打招呼频率</button>
+      <button type="button" data-frame="reply-interval.html">回复频率</button>
+    </div>
+    <iframe class="subframe" id="subframe" src="time-interval.html"></iframe>
+  </div>
+  <script src="js/merged-interval.js"></script>
+</body>
+</html>

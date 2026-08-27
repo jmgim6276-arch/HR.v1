@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>简历采集控制台</title>
+  <link rel="stylesheet" href="shared.css">
+  <style>
+    .config-card { background: var(--surface); border-radius: var(--radius-lg); padding: var(--space-4); margin-bottom: var(--space-5); }
+    .hint-text { font-size: var(--text-xs); color: var(--muted); line-height: 1.6; margin: 0; }
+    .config-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+    .config-grid .field { margin-bottom: 0; }
+    .config-grid label { min-height: 30px; display: flex; align-items: flex-end; }
+    .safety-note { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border-soft); font-size: 11px; line-height: 1.55; color: var(--muted); }
+    .reply-switch-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border-soft); }
+    .reply-switch-title { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+    .reply-switch-desc { color: var(--muted); font-size: 11px; line-height: 1.55; }
+    .status-toggle { position: relative; display: inline-block; width: 42px; height: 24px; flex-shrink: 0; }
+    .status-toggle input { opacity: 0; width: 0; height: 0; }
+    .status-toggle .slider { position: absolute; inset: 0; cursor: pointer; background: var(--border); border-radius: 24px; transition: background-color .2s; }
+    .status-toggle .slider::before { position: absolute; content: ""; width: 20px; height: 20px; left: 2px; top: 2px; border-radius: 50%; background: #fff; transition: transform .2s; box-shadow: 0 1px 3px rgba(0,0,0,.15); }
+    .status-toggle input:checked + .slider { background: var(--accent); }
+    .status-toggle input:checked + .slider::before { transform: translateX(18px); }
+    .status-toggle input:focus-visible + .slider { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .reply-status { margin-top: 8px; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--accent-bg); color: var(--accent); font-size: 11px; line-height: 1.5; display: none; }
+
+    .control-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: var(--space-5); }
+
+    .status-banner { background: color-mix(in srgb, var(--success), transparent 90%); color: var(--success); padding: 12px; border-radius: var(--radius-md); display: flex; align-items: center; gap: 10px; font-size: var(--text-sm); margin-bottom: var(--space-5); }
+    .status-pulse { width: 8px; height: 8px; background: var(--success); border-radius: 50%; animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 color-mix(in srgb, var(--success), transparent 30%); } 70% { transform: scale(1); box-shadow: 0 0 0 6px color-mix(in srgb, var(--success), transparent 100%); } 100% { transform: scale(0.95); box-shadow: 0 0 0 0 color-mix(in srgb, var(--success), transparent 100%); } }
+    @media (prefers-reduced-motion: reduce) {
+      .status-pulse { animation: none; }
+      .status-toggle .slider, .status-toggle .slider::before { transition: none; }
+    }
+
+    /* 采集统计 */
+    .stats-strip { display: flex; }
+    .stat-item { flex: 1; text-align: center; }
+    .stat-item:not(:last-child) { border-right: 1px solid var(--border-soft); }
+    .stat-value { font-size: 20px; font-weight: 600; }
+    .stat-label { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+    .log-container { background: #1d1d1f; color: #f5f5f7; border-radius: var(--radius-md); padding: 12px; height: 280px; overflow-y: auto; font-family: var(--font-mono); font-size: 11px; line-height: 1.6; }
+    .log-entry { display: flex; gap: 6px; margin-bottom: 2px; }
+    .log-time { color: #86868b; flex-shrink: 0; }
+    .log-sys { color: #ff9f0a; }
+    .log-collect { color: #30d158; }  /* 绿色 - 采集到候选人 */
+    .log-skip { color: #2997ff; }     /* 蓝色 - 跳过 */
+    .log-reply { color: #bf8cff; }    /* 紫色 - 自动回复 */
+
+    /* 日志控制按钮样式 */
+    .btn-sm { padding: 4px 10px; font-size: 11px; border-radius: 4px; cursor: pointer; border: 1px solid var(--border); background: transparent; color: var(--text); transition: all 0.2s; white-space: nowrap; }
+    .btn-sm:hover { background: var(--border); }
+    .btn-outline { border-color: var(--border); }
+    @media (max-width: 720px) {
+      .config-grid { grid-template-columns: 1fr; }
+      .config-grid label { min-height: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="panel-content">
+    <h2 class="section-title">简历采集控制台</h2>
+
+    <div class="config-card">
+      <p class="hint-text">打开 BOSS 直聘「沟通」页后启动。插件只检查当前可见的未读会话；发现待接收的附件简历后，依次点击“同意”和“点击预览附件简历”，再提取关键信息并写入人才库。</p>
+      <div class="config-grid">
+        <div class="field">
+          <label for="maxPerRun">本轮最多人数</label>
+          <input class="input" id="maxPerRun" type="number" min="1" max="10" value="5" />
+        </div>
+        <div class="field">
+          <label for="intervalSeconds">候选人间隔（秒）</label>
+          <input class="input" id="intervalSeconds" type="number" min="60" max="300" value="60" />
+        </div>
+        <div class="field">
+          <label for="actionDelaySeconds">关键操作等待（秒）</label>
+          <input class="input" id="actionDelaySeconds" type="number" min="4" max="15" value="4" />
+        </div>
+      </div>
+      <div class="reply-switch-row">
+        <div>
+          <div class="reply-switch-title">简历入库后自动发送回复</div>
+          <div class="reply-switch-desc">关闭时只采集入库；打开后按“简历回复配置”从上到下逐条发送真实消息。</div>
+        </div>
+        <label class="status-toggle" aria-label="简历入库后自动发送回复">
+          <input type="checkbox" id="autoSendReply" />
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="reply-status" id="replyStatus" role="status"></div>
+      <div class="safety-note">限制：串行处理；候选人间隔最低 60 秒；关键点击至少等待 4 秒；本轮最多 10 人；检测到安全验证、操作频繁或连续三次异常时自动停止。</div>
+    </div>
+
+    <div class="control-grid">
+      <button class="btn btn-primary" id="btnStart">开始采集</button>
+      <button class="btn btn-danger" id="btnStop" disabled>停止采集</button>
+    </div>
+
+    <!-- 运行中状态指示 -->
+    <div id="runningIndicator" style="display:none">
+      <div class="status-banner"><div class="status-pulse"></div><span id="runningStatusText">简历采集运行中...</span></div>
+    </div>
+
+    <!-- 采集统计 -->
+    <div class="config-card stats-strip">
+      <div class="stat-item">
+        <div class="stat-value num" id="statCollected">0</div>
+        <div class="stat-label">本次采集</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value num" id="statSaved">0</div>
+        <div class="stat-label">新增入库</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value num" id="statUpdated">0</div>
+        <div class="stat-label">更新入库</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value num" id="statSkipped">0</div>
+        <div class="stat-label">未采集跳过</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value num" id="statReplied">0</div>
+        <div class="stat-label">已自动回复</div>
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <h3 style="font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px;margin:0">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M2 12h20M2 6h20M2 18h20"/></svg>
+        实时运行日志
+      </h3>
+      <div style="display:flex;gap:6px">
+        <button class="btn-sm btn-outline" id="btnClearLog" title="清空日志">清空日志</button>
+        <button class="btn-sm btn-outline" id="btnExportLog" title="导出日志">导出日志</button>
+      </div>
+    </div>
+    <div class="log-container" id="logContainer">
+      <div class="log-entry"><span class="log-time">--:--:--</span> <span class="log-sys">[系统]</span> 等待启动...</div>
+    </div>
+
+    <div style="margin-top:var(--space-4);text-align:right">
+      <button class="btn btn-ghost" id="btnGoTalentPool" style="font-size:12px;padding:6px 14px">查看人才库 →</button>
+    </div>
+  </div>
+
+  <script src="js/resume-collect.js"></script>
+  <div id="toast" style="position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1d1d1f;color:#fff;padding:10px 24px;border-radius:8px;font-size:13px;z-index:999;opacity:0;transition:opacity 0.3s;pointer-events:none"></div>
+</body>
+</html>

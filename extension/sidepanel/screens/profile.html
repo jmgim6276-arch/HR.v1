@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>个人中心</title>
+  <link rel="stylesheet" href="shared.css">
+  <style>
+    .login-box { background: var(--surface); border-radius: var(--radius-lg); padding: 24px; }
+    .input-group { display: flex; gap: 8px; }
+    .input-group .input { flex: 1; }
+    .profile-card { background: var(--surface); border-radius: var(--radius-lg); padding: 20px; border: 1px solid var(--border-soft); margin-bottom: var(--space-4); }
+    .info-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; }
+    .info-row:not(:last-child) { border-bottom: 1px solid var(--border-soft); }
+    .info-label { font-size: 13px; color: var(--muted); }
+    .info-value { font-size: 14px; font-weight: 500; }
+    .tag-vip { background: color-mix(in srgb, var(--gold), transparent 82%); color: var(--gold); padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+    .tag-free { background: var(--surface); color: var(--muted); padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; border: 1px solid var(--border); }
+
+    .plan-selector { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: var(--space-4); }
+    .plan-item { border: 1.5px solid var(--border); border-radius: var(--radius-md); padding: 16px; text-align: center; transition: all 0.2s; }
+    .plan-item.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent), transparent 95%); }
+    .plan-name { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+    .plan-price { font-size: 22px; font-weight: 700; color: var(--accent); margin-bottom: 4px; }
+    .plan-price span { font-size: 13px; font-weight: 400; color: var(--muted); }
+
+    .profile-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-4); }
+    .profile-header .section-title { margin: 0; }
+    .profile-header-actions { display: flex; gap: 6px; }
+    .profile-header-actions .btn { font-size: 11px; padding: 4px 10px; }
+
+    .purchase-section { margin-top: var(--space-4); }
+    .purchase-heading { margin-bottom: 10px; }
+    .purchase-title { display: block; color: var(--fg); font-size: 13px; font-weight: 600; }
+    .purchase-subtitle { display: block; color: var(--muted); font-size: 11px; margin-top: 3px; line-height: 1.5; }
+    .qr-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+    .qr-card { background: var(--surface-warm); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px; text-align: center; position: relative; }
+    .qr-image { width: 100%; min-height: 150px; margin: 0 auto 10px; border-radius: 8px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border-soft); overflow: hidden; cursor: zoom-in; background: #fff; transition: border-color 0.2s, box-shadow 0.2s; }
+    .qr-image img { width: 100%; height: 100%; object-fit: contain; }
+    .qr-image .placeholder-icon { width: 60px; height: 60px; opacity: 0.4; }
+    .qr-image:hover, .qr-image:focus-visible { border-color: #087b98; box-shadow: 0 0 0 3px rgba(8,123,152,0.12); outline: none; }
+    .qr-label { color: var(--fg); font-size: 12px; font-weight: 650; }
+    .qr-hint { font-size: 10px; color: var(--muted); margin-top: 4px; line-height: 1.45; }
+    .qr-reminder { font-size: 11px; color: #b42318; text-align: center; margin-top: 10px; font-weight: 500; }
+
+    /* 图片预览弹窗 */
+    .img-preview-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 1000; display: none; align-items: center; justify-content: center; cursor: zoom-out; }
+    .img-preview-overlay.show { display: flex; }
+    .img-preview-overlay img { max-width: 85vw; max-height: 85vh; border-radius: 8px; box-shadow: 0 8px 32px rgba(0,0,0,0.3); }
+
+    .divider { height: 1px; background: var(--border-soft); margin: var(--space-4) 0; }
+    .privacy-consent { display: flex; align-items: flex-start; gap: 9px; margin: 14px 0 12px; padding: 12px; background: color-mix(in srgb, var(--accent), transparent 96%); border: 1px solid color-mix(in srgb, var(--accent), transparent 78%); border-radius: var(--radius-md); }
+    .privacy-consent input { margin-top: 3px; flex-shrink: 0; }
+    .privacy-consent span { font-size: 11px; line-height: 1.55; color: var(--muted); }
+    .privacy-consent a { color: var(--accent); text-decoration: none; }
+    .privacy-consent a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="panel-content">
+    <!-- 登录视图 -->
+    <div id="loginView">
+      <div style="text-align:center;margin-bottom:24px">
+        <div style="font-size:32px;margin-bottom:8px">👋</div>
+        <h2 style="margin:0;font-size:19px;font-weight:600">欢迎使用</h2>
+        <p style="font-size:13px;color:var(--muted);margin:6px 0 0">登录以同步订阅状态</p>
+      </div>
+      <div class="login-box">
+        <div class="field">
+          <label>邮箱地址</label>
+          <div class="input-group">
+            <input type="email" class="input" id="loginEmail" placeholder="your@email.com">
+          </div>
+        </div>
+        <div class="field">
+          <label>验证码</label>
+          <div class="input-group">
+            <input type="text" class="input" id="loginCode" placeholder="输入验证码" maxlength="6">
+            <button class="btn btn-secondary" id="btnSendCode" style="white-space:nowrap;flex-shrink:0">获取验证码</button>
+          </div>
+        </div>
+        <label class="privacy-consent">
+          <input type="checkbox" id="privacyConsent">
+          <span>我已阅读并同意<a href="https://hr.uf-tree.com/privacy" target="_blank" rel="noopener noreferrer">《凯旋智聘隐私政策》</a>，知悉岗位、话术、频率等账号配置会自动同步至云端（大模型 API Key 和人才库除外）；启用 AI 或逐条提交呼波特时，必要数据可能发送至对应服务商。</span>
+        </label>
+        <button class="btn btn-primary" id="btnLogin" style="width:100%;margin-top:8px">登录</button>
+      </div>
+    </div>
+
+    <!-- 个人中心视图 -->
+    <div id="profileView" style="display:none">
+      <div class="profile-header">
+        <h2 class="section-title">个人信息</h2>
+        <div class="profile-header-actions">
+          <button class="btn btn-secondary" id="btnSync">同步订阅</button>
+          <button class="btn btn-ghost" id="btnLogout">退出</button>
+        </div>
+      </div>
+
+      <div class="profile-card">
+        <div class="info-row">
+          <span class="info-label">账号</span>
+          <span class="info-value" id="profileEmail">-</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">订阅套餐</span>
+          <span class="info-value">
+            <span id="profilePlan" class="tag-free">免费版</span>
+          </span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">到期时间</span>
+          <span class="info-value" id="profileExpire" style="color:var(--muted)">-</span>
+        </div>
+      </div>
+
+      <div class="profile-card" id="privacyConsentCard">
+        <div style="font-size:14px;font-weight:600;margin-bottom:8px">隐私与数据授权</div>
+        <label class="privacy-consent" style="margin:0 0 10px">
+          <input type="checkbox" id="profilePrivacyConsent">
+          <span>我已阅读并同意<a href="https://hr.uf-tree.com/privacy" target="_blank" rel="noopener noreferrer">《凯旋智聘隐私政策》</a>，知悉账号配置默认云同步，大模型 API Key 与人才库保持本机存储；AI 功能及逐条确认的呼波特提交会向对应第三方传输必要数据。</span>
+        </label>
+        <button class="btn btn-primary" id="btnSavePrivacyConsent" style="width:100%">同意并保存</button>
+        <div id="privacyConsentStatus" style="font-size:11px;color:var(--muted);text-align:center;margin-top:8px"></div>
+      </div>
+
+      <h3 style="font-size:15px;font-weight:600;margin:0 0 var(--space-3)">订阅方案</h3>
+      <div class="plan-selector" id="planSelector">
+        <div class="plan-item">
+          <div class="plan-name">7天套餐</div>
+          <div class="plan-price">¥9.9 <span>/7天</span></div>
+        </div>
+        <div class="plan-item">
+          <div class="plan-name">季度套餐</div>
+          <div class="plan-price">¥298 <span>/季度</span></div>
+        </div>
+        <div class="plan-item">
+          <div class="plan-name">年度套餐</div>
+          <div class="plan-price">¥698 <span>/年</span></div>
+        </div>
+        <div class="plan-item">
+          <div class="plan-name">三年套餐</div>
+          <div class="plan-price">¥1280 <span>/3年</span></div>
+        </div>
+      </div>
+      <p style="font-size:11px;color:var(--muted);text-align:center;margin:4px 0 0" id="planLoadHint">套餐信息加载中...</p>
+
+      <div class="field purchase-section">
+        <div class="purchase-heading">
+          <span class="purchase-title">订阅开通</span>
+          <span class="purchase-subtitle">请根据需要扫码付款或联系客服，点击二维码可放大查看。</span>
+        </div>
+        <div class="qr-container">
+          <div class="qr-card">
+            <div class="qr-image" id="qrPayContainer" role="button" tabindex="0" aria-label="放大查看官方收款码">
+              <img id="qrPayImg" src="images/official-payment-qr.png" alt="官方收款码（微信支付）">
+              <div class="placeholder-icon" id="qrPayFallback">
+                <svg width="60" height="60" viewBox="0 0 60 60">
+                  <rect x="0" y="0" width="26" height="26" fill="#1d1d1f" rx="2"/>
+                  <rect x="30" y="16" width="14" height="14" fill="#1d1d1f" rx="2"/>
+                  <rect x="30" y="34" width="14" height="14" fill="#1d1d1f" rx="2"/>
+                  <rect x="16" y="30" width="14" height="14" fill="#1d1d1f" rx="2"/>
+                  <rect x="2" y="42" width="8" height="8" fill="#1d1d1f" rx="1"/>
+                  <rect x="42" y="2" width="8" height="8" fill="#1d1d1f" rx="1"/>
+                  <rect x="52" y="0" width="8" height="8" fill="#1d1d1f" rx="1"/>
+                  <rect x="0" y="52" width="8" height="8" fill="#1d1d1f" rx="1"/>
+                </svg>
+              </div>
+            </div>
+            <div class="qr-label">官方收款码</div>
+            <div class="qr-hint">使用微信扫码支付</div>
+          </div>
+          <div class="qr-card">
+            <div class="qr-image" id="qrWxContainer" role="button" tabindex="0" aria-label="放大查看客服微信二维码">
+              <img id="qrWxImg" src="images/customer-service-wechat.png" alt="客服微信二维码">
+              <div class="placeholder-icon" id="qrWxFallback">
+                <svg width="60" height="60" viewBox="0 0 60 60">
+                  <rect x="2" y="2" width="26" height="26" fill="#07c160" rx="2"/>
+                  <rect x="32" y="2" width="26" height="26" fill="#07c160" rx="2"/>
+                  <rect x="2" y="32" width="26" height="26" fill="#07c160" rx="2"/>
+                  <rect x="32" y="32" width="26" height="26" fill="#07c160" rx="2"/>
+                  <circle cx="15" cy="15" r="4" fill="#fff"/>
+                  <circle cx="45" cy="15" r="4" fill="#fff"/>
+                  <circle cx="15" cy="45" r="4" fill="#fff"/>
+                  <circle cx="45" cy="45" r="4" fill="#fff"/>
+                </svg>
+              </div>
+            </div>
+            <div class="qr-label">客服微信</div>
+            <div class="qr-hint">咨询开通、付款与售后问题</div>
+          </div>
+        </div>
+        <div class="qr-reminder">付款时请备注登录账号和订阅套餐。</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- 图片预览弹窗 -->
+  <div class="img-preview-overlay" id="imgPreview">
+    <img id="imgPreviewSrc" src="" alt="预览">
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" style="position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1d1d1f;color:#fff;padding:10px 24px;border-radius:8px;font-size:13px;z-index:999;opacity:0;transition:opacity 0.3s;pointer-events:none"></div>
+
+  <script src="js/profile.js"></script>
+</body>
+</html>
