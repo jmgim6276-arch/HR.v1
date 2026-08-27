@@ -13,6 +13,7 @@ import hmac
 import json
 import os
 import re
+from typing import Optional
 from fastapi import FastAPI, Depends, Header, Request
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -121,6 +122,20 @@ class AdminRechargeReq(BaseModel):
     note: str = Field(default="", max_length=200)
 
 
+class LlmChatReq(BaseModel):
+    scene: str = Field(min_length=1, max_length=40)
+    messages: list
+    max_tokens: Optional[int] = Field(default=None, ge=1)
+    temperature: Optional[float] = Field(default=None, ge=0, le=2)
+
+
+class LlmScoreReq(BaseModel):
+    jd_text: str = Field(default="", max_length=8000)
+    resume_text: str = Field(min_length=1, max_length=30000)
+    detail: str = Field(default="full", pattern="^(full|brief)$")
+    dimensions: Optional[list] = None
+
+
 def require_admin(x_admin_key: str = Header(None)):
     # 恒定时间比较，避免口令被逐字节时序探测；None 统一按空串处理。
     provided = (x_admin_key or "").encode("utf-8")
@@ -189,6 +204,19 @@ def r_billing_balance(user: dict = Depends(auth_user)):
 def r_billing_transactions(limit: int = 50, offset: int = 0,
                            user: dict = Depends(auth_user)):
     return core.list_point_transactions(user["id"], limit, offset)
+
+
+# ── LLM 托管代理（双闸门：订阅 → 点数；密钥只在服务器）────
+@app.post(API + "/llm/chat")
+def r_llm_chat(req: LlmChatReq, user: dict = Depends(auth_user)):
+    return core.llm_chat(user["id"], req.scene, req.messages,
+                         req.max_tokens, req.temperature)
+
+
+@app.post(API + "/llm/score-resume")
+def r_llm_score_resume(req: LlmScoreReq, user: dict = Depends(auth_user)):
+    return core.llm_score_resume(user["id"], req.jd_text, req.resume_text,
+                                 req.detail, req.dimensions)
 
 
 # ── 呼波特人才线索集成（凭当前插件登录会话）────────────

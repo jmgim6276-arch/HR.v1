@@ -567,5 +567,295 @@ check("OpenAPI 暴露计费接口",
       and "/api/v1/admin/billing/recharge" in paths
       and "/api/v1/admin/billing/transactions" in paths)
 
+# ── LLM 托管代理（双闸门 / 钳制 / 限流 / 真实扣费 / 上游异常）──
+# 两层假：业务层用 FakeUpstream 换掉 core._call_upstream；
+# 传输层 patch urllib.request.urlopen 验证真实 _call_upstream 的请求体与异常分支。
+LLM_EMAIL = "llm@example.com"
+llm_uid = login(LLM_EMAIL, "llm-device-0001")["user"]["id"]
+core.admin_grant(LLM_EMAIL, "plan_weekly")  # 双闸门第一级：会员
+
+
+class FakeUpstream:
+    def __init__(self):
+        self.calls = []
+        self.content = '{"overall": 88, "recommendation": "推荐", "summary": "匹配良好"}'
+        self.usage = (3000, 500)
+
+    def __call__(self, messages, max_tokens, temperature):
+        self.calls.append({"messages": messages, "max_tokens": max_tokens,
+                           "temperature": temperature})
+        return self.content, self.usage[0], self.usage[1]
+
+
+fake = FakeUpstream()
+real_upstream = core._call_upstream
+core._call_upstream = fake
+try:
+    before = core.get_balance(llm_uid)["balance_points"]
+    r = core.llm_chat(llm_uid, "reply_judge",
+                      [{"role": "user", "content": "判断这条消息是否要回复"}])
+    check("透传端点放行并返回模型内容",
+          r["ok"] is True and "overall" in r["content"]
+          and r["balance_points"] == round(before - 0.07, 2)
+          and r["warn_level"] == "none")
+
+    with core.db() as c:
+        tx = c.execute(
+            "SELECT * FROM point_transactions WHERE user_id=? AND kind='consume' "
+            "ORDER BY created_at DESC LIMIT 1", (llm_uid,)).fetchone()
+    check("透传扣费流水：场景 reply_judge + 真实 token 证据链",
+          tx["scene"] == "reply_judge" and tx["delta_milli"] == -70
+          and tx["prompt_tokens"] == 3000 and tx["completion_tokens"] == 500)
+
+    expect_error("透传端点拒绝模板场景（resume_score 须走打分端点）",
+                 lambda: core.llm_chat(llm_uid, "resume_score",
+                                       [{"role": "user", "content": "x"}]),
+                 400, "BILLING_INVALID_SCENE")
+    expect_error("未知场景被拒绝",
+                 lambda: core.llm_chat(llm_uid, "free_chat",
+                                       [{"role": "user", "content": "x"}]),
+                 400, "BILLING_INVALID_SCENE")
+    expect_error("空消息数组被拒绝",
+                 lambda: core.llm_chat(llm_uid, "reply_judge", []),
+                 400, "LLM_BAD_MESSAGES")
+    expect_error("非法角色被拒绝",
+                 lambda: core.llm_chat(llm_uid, "reply_judge",
+                                       [{"role": "tool", "content": "x"}]),
+                 400, "LLM_BAD_MESSAGES")
+    expect_error("空 content 被拒绝",
+                 lambda: core.llm_chat(llm_uid, "reply_judge",
+                                       [{"role": "user", "content": "  "}]),
+                 400, "LLM_BAD_MESSAGES")
+    expect_error("消息条数超限被拒绝",
+                 lambda: core.llm_chat(llm_uid, "reply_judge",
+                                       [{"role": "user", "content": "x"}] * 11),
+                 400, "LLM_BAD_MESSAGES")
+    expect_error("单条消息过长被拒绝",
+                 lambda: core.llm_chat(llm_uid, "reply_judge",
+                                       [{"role": "user", "content": "x" * 20001}]),
+                 400, "LLM_BAD_MESSAGES")
+
+    core.llm_chat(llm_uid, "reply_judge",
+                  [{"role": "user", "content": "hi"}], max_tokens=99999)
+    check("max_tokens 服务端封顶", fake.calls[-1]["max_tokens"] == core.LLM_MAX_TOKENS_CAP)
+    core.llm_chat(llm_uid, "reply_judge", [{"role": "user", "content": "hi"}])
+    check("max_tokens 默认值 800", fake.calls[-1]["max_tokens"] == 800)
+    core.llm_chat(llm_uid, "reply_judge",
+                  [{"role": "user", "content": "hi"}], temperature=1.8)
+    check("temperature 钳制到 1.0", fake.calls[-1]["temperature"] == 1.0)
+    core.llm_chat(llm_uid, "reply_judge",
+                  [{"role": "user", "content": "hi", "name": "x", "tool_calls": [1]}])
+    check("消息多余字段被剥除",
+          set(fake.calls[-1]["messages"][0].keys()) == {"role", "content"})
+
+    r = core.llm_chat(llm_uid, "collect_extract",
+                      [{"role": "system", "content": "提取简历字段"},
+                       {"role": "user", "content": "张三 本科 5年"}])
+    check("采集提取场景走透传（第四出口也计费）", r["ok"] is True)
+    with core.db() as c:
+        tx = c.execute(
+            "SELECT scene FROM point_transactions WHERE user_id=? AND kind='consume' "
+            "ORDER BY created_at DESC LIMIT 1", (llm_uid,)).fetchone()
+    check("采集提取流水场景为 collect_extract", tx["scene"] == "collect_extract")
+
+    # 双闸门顺序：先订阅后余额——非会员即使余额为 0 也先吃 403
+    gate_uid = login("llm-gate@example.com", "llm-device-0002")["user"]["id"]
+    core.record_llm_usage(gate_uid, "reply_judge", 3000000000, 0)  # 打成负余额
+    expect_error("非会员先被订阅闸门拦（不是 402）",
+                 lambda: core.llm_chat(gate_uid, "reply_judge",
+                                       [{"role": "user", "content": "x"}]),
+                 403, "SUBSCRIPTION_REQUIRED")
+
+    poor_uid = login("llm-poor@example.com", "llm-device-0003")["user"]["id"]
+    core.admin_grant("llm-poor@example.com", "plan_weekly")
+    core.record_llm_usage(poor_uid, "reply_judge", 3000000000, 0)
+    expect_error("会员余额<=0 被拒（402）",
+                 lambda: core.llm_chat(poor_uid, "reply_judge",
+                                       [{"role": "user", "content": "x"}]),
+                 402, "BILLING_INSUFFICIENT_BALANCE")
+
+    cap_uid = login("llm-cap@example.com", "llm-device-0004")["user"]["id"]
+    core.admin_grant("llm-cap@example.com", "plan_weekly")
+    core.record_llm_usage(cap_uid, "reply_judge", 1500, 500)
+    real_limit = core.BILLING_DAILY_LIMIT_POINTS
+    core.BILLING_DAILY_LIMIT_POINTS = 0.01
+    try:
+        expect_error("会员当日达上限被拒（429）",
+                     lambda: core.llm_chat(cap_uid, "reply_judge",
+                                           [{"role": "user", "content": "x"}]),
+                     429, "BILLING_DAILY_LIMIT")
+    finally:
+        core.BILLING_DAILY_LIMIT_POINTS = real_limit
+
+    rpm_uid = login("llm-rpm@example.com", "llm-device-0005")["user"]["id"]
+    core.admin_grant("llm-rpm@example.com", "plan_weekly")
+    real_rpm = core.LLM_RATE_LIMIT_PER_MIN
+    core.LLM_RATE_LIMIT_PER_MIN = 3
+    try:
+        for _ in range(3):
+            core.llm_chat(rpm_uid, "reply_judge", [{"role": "user", "content": "x"}])
+        expect_error("每分钟限流第 4 次被拒",
+                     lambda: core.llm_chat(rpm_uid, "reply_judge",
+                                           [{"role": "user", "content": "x"}]),
+                     429, "LLM_RATE_LIMIT")
+    finally:
+        core.LLM_RATE_LIMIT_PER_MIN = real_rpm
+
+    core._llm_rate_windows.clear()  # llm_uid 前面攒的窗口清零，防误伤打分测试
+
+    # ── 服务端模板打分 ──
+    before = core.get_balance(llm_uid)["balance_points"]
+    r = core.llm_score_resume(
+        llm_uid, "招聘经理，5年以上经验，熟悉BOSS直聘",
+        "张三 13800138000 zhangsan@example.com 5年招聘经验 本科学历 熟悉全流程")
+    check("full 打分返回结构化结果并扣费",
+          r["ok"] is True and r["result"]["overall"] == 88
+          and r["balance_points"] == round(before - 0.07, 2))
+    call = fake.calls[-1]
+    check("full 提示词含维度与 JD（与插件模板逐字）",
+          "【评分维度】" in call["messages"][0]["content"]
+          and "岗位匹配度（key=match，权重 35%）" in call["messages"][0]["content"]
+          and "招聘经理，5年以上经验" in call["messages"][0]["content"]
+          and call["max_tokens"] == 2000 and call["temperature"] == 0.3)
+    user_msg = call["messages"][1]["content"]
+    check("打分前联系方式已脱敏（与插件 maskContacts 同规则）",
+          user_msg.startswith("【候选人简历文本】")
+          and "13800138000" not in user_msg and "[手机号已在本地提取]" in user_msg
+          and "zhangsan@example.com" not in user_msg and "[邮箱已在本地提取]" in user_msg)
+    with core.db() as c:
+        tx = c.execute(
+            "SELECT scene FROM point_transactions WHERE user_id=? AND kind='consume' "
+            "ORDER BY created_at DESC LIMIT 1", (llm_uid,)).fetchone()
+    check("full 打分流水场景为 resume_score", tx["scene"] == "resume_score")
+
+    core.llm_score_resume(llm_uid, "", "李四 3年销售经验 大专学历 期望城市杭州")
+    call = fake.calls[-1]
+    check("默认 detail 为 full（带维度，手动打分页语义）",
+          "【评分维度】" in call["messages"][0]["content"]
+          and call["max_tokens"] == 2000 and call["temperature"] == 0.3)
+    core.llm_score_resume(llm_uid, "JD", "王五 2年客服经验 高中学历 可立即到岗", "brief")
+    with core.db() as c:
+        tx = c.execute(
+            "SELECT scene FROM point_transactions WHERE user_id=? AND kind='consume' "
+            "ORDER BY created_at DESC LIMIT 1", (llm_uid,)).fetchone()
+    check("brief 流水场景为 collect_score（入库自动打分，简版省 token）",
+          tx["scene"] == "collect_score"
+          and fake.calls[-1]["max_tokens"] == 500
+          and fake.calls[-1]["temperature"] == 0.2
+          and "【评分维度】" not in fake.calls[-1]["messages"][0]["content"]
+          and "【候选人简历文本】" not in fake.calls[-1]["messages"][1]["content"])
+
+    expect_error("简历文本过短被拒（不烧 token）",
+                 lambda: core.llm_score_resume(llm_uid, "", "太短"),
+                 400, "LLM_RESUME_TOO_SHORT")
+    expect_error("非法 detail 被拒",
+                 lambda: core.llm_score_resume(llm_uid, "", "一段超过二十个字的简历文本内容，长度确保超过二十字校验", "mega"),
+                 400, "LLM_BAD_DETAIL")
+
+    core.llm_score_resume(llm_uid, "", "一段超过二十个字的简历文本内容，长度确保超过二十字校验",
+                          "full", [{"key": "culture", "label": "文化匹配", "weight": 50}])
+    check("自定义维度进入提示词",
+          "文化匹配（key=culture，权重 50%）" in fake.calls[-1]["messages"][0]["content"])
+    core.llm_score_resume(llm_uid, "", "一段超过二十个字的简历文本内容，长度确保超过二十字校验",
+                          "full", [{"key": "broken"}])
+    check("非法自定义维度回落默认五维",
+          "岗位匹配度（key=match，权重 35%）" in fake.calls[-1]["messages"][0]["content"])
+
+    # 解析失败不扣费（用户买不到空气；坏输出没有套利价值）
+    fake.content = "这不是 JSON"
+    before = core.get_balance(llm_uid)["balance_points"]
+    expect_error("模型返回非 JSON → 502",
+                 lambda: core.llm_score_resume(llm_uid, "", "一段超过二十个字的简历文本内容，长度确保超过二十字校验"),
+                 502, "LLM_BAD_RESPONSE")
+    check("解析失败不扣费", core.get_balance(llm_uid)["balance_points"] == before)
+    fake.content = '{"recommendation": "推荐"}'
+    expect_error("模型返回缺 overall → 502",
+                 lambda: core.llm_score_resume(llm_uid, "", "一段超过二十个字的简历文本内容，长度确保超过二十字校验"),
+                 502, "LLM_BAD_RESPONSE")
+    check("缺 overall 也不扣费", core.get_balance(llm_uid)["balance_points"] == before)
+    fake.content = '{"overall": 188, "recommendation": "推荐", "summary": "x"}'
+    r = core.llm_score_resume(llm_uid, "", "一段超过二十个字的简历文本内容，长度确保超过二十字校验")
+    check("overall 越界钳制到 0-100", r["result"]["overall"] == 100)
+finally:
+    core._call_upstream = real_upstream
+    core._llm_rate_windows.clear()
+
+
+# ── 传输层：真实 _call_upstream 的请求体与异常分支 ──
+class _FakeHTTPResp:
+    def __init__(self, payload):
+        self._payload = payload
+
+    def read(self):
+        return json.dumps(self._payload).encode("utf-8")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+real_key = core.DASHSCOPE_API_KEY
+try:
+    core.DASHSCOPE_API_KEY = ""
+    expect_error("服务端未配 key → 503",
+                 lambda: core._call_upstream([{"role": "user", "content": "x"}], 100, 0.3),
+                 503, "LLM_NOT_CONFIGURED")
+
+    core.DASHSCOPE_API_KEY = "test-key"
+    captured = {}
+
+    def fake_urlopen(req, timeout=None):
+        captured["url"] = req.get_full_url()
+        captured["body"] = json.loads(req.data.decode("utf-8"))
+        captured["auth"] = req.headers.get("Authorization")
+        captured["timeout"] = timeout
+        return _FakeHTTPResp({"choices": [{"message": {"content": "ok"}}],
+                              "usage": {"prompt_tokens": 10, "completion_tokens": 5}})
+
+    with patch("urllib.request.urlopen", fake_urlopen):
+        content, pt, ct = core._call_upstream(
+            [{"role": "user", "content": "hi"}], 123, 0.7)
+    check("上游请求体：锁模型/禁流式/封顶/Bearer/超时",
+          content == "ok" and pt == 10 and ct == 5
+          and captured["body"]["model"] == core.LLM_MODEL
+          and captured["body"]["stream"] is False
+          and captured["body"]["max_tokens"] == 123
+          and captured["auth"] == "Bearer test-key"
+          and captured["url"].endswith("/chat/completions")
+          and captured["timeout"] == core.LLM_TIMEOUT_SECONDS)
+
+    def urlopen_no_usage(req, timeout=None):
+        return _FakeHTTPResp({"choices": [{"message": {"content": "ok"}}]})
+
+    with patch("urllib.request.urlopen", urlopen_no_usage):
+        expect_error("上游缺 usage → 502 不扣费（计费诚信，宁败不送）",
+                     lambda: core._call_upstream([{"role": "user", "content": "x"}], 100, 0.3),
+                     502, "LLM_USAGE_MISSING")
+
+    def urlopen_http_err(req, timeout=None):
+        import urllib.error
+        raise urllib.error.HTTPError("http://x", 500, "Server Error", {}, None)
+
+    with patch("urllib.request.urlopen", urlopen_http_err):
+        expect_error("上游 HTTP 错误 → 502 不扣费",
+                     lambda: core._call_upstream([{"role": "user", "content": "x"}], 100, 0.3),
+                     502, "LLM_UPSTREAM_ERROR")
+
+    def urlopen_timeout(req, timeout=None):
+        raise TimeoutError("timed out")
+
+    with patch("urllib.request.urlopen", urlopen_timeout):
+        expect_error("上游超时 → 502 不扣费",
+                     lambda: core._call_upstream([{"role": "user", "content": "x"}], 100, 0.3),
+                     502, "LLM_UPSTREAM_ERROR")
+finally:
+    core.DASHSCOPE_API_KEY = real_key
+
+paths = main.app.openapi()["paths"]
+check("OpenAPI 暴露 LLM 代理接口",
+      "/api/v1/llm/chat" in paths and "/api/v1/llm/score-resume" in paths)
+
 print(f"\n🎉 全部通过：{ok} 项断言")
 os.remove(os.environ["DB_PATH"])

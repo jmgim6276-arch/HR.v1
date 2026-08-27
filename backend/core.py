@@ -13,6 +13,9 @@ import hashlib
 import hmac
 import base64
 import json
+import re
+import urllib.request
+import urllib.error
 from datetime import datetime, timedelta, timezone
 from contextlib import contextmanager
 
@@ -39,8 +42,18 @@ BILLING_SIGNUP_BONUS_POINTS = float(os.getenv("BILLING_SIGNUP_BONUS_POINTS", "50
 BILLING_DAILY_LIMIT_POINTS = float(os.getenv("BILLING_DAILY_LIMIT_POINTS", "200"))
 BILLING_WARN_SOFT_POINTS = float(os.getenv("BILLING_WARN_SOFT_POINTS", "5"))
 BILLING_WARN_HARD_POINTS = float(os.getenv("BILLING_WARN_HARD_POINTS", "0.5"))
-# 消费场景白名单（代理端点只接受这三种，防滥用者自由发挥）
-BILLING_SCENES = {"reply_judge", "resume_score", "collect_score"}
+# 消费场景白名单（代理端点只接受这四种，防滥用者自由发挥）
+BILLING_SCENES = {"reply_judge", "resume_score", "collect_score", "collect_extract"}
+
+# ── LLM 托管代理（密钥只放服务器，插件永不接触）──────────────
+# 阿里 dashscope OpenAI 兼容端点；固定一款模型，用户不可选（决策 1）。
+DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY", "")
+LLM_BASE_URL = os.getenv(
+    "LLM_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+LLM_MODEL = os.getenv("LLM_MODEL", "qwen-plus")
+LLM_MAX_TOKENS_CAP = int(os.getenv("LLM_MAX_TOKENS_CAP", "2000"))
+LLM_RATE_LIMIT_PER_MIN = int(os.getenv("LLM_RATE_LIMIT_PER_MIN", "20"))
+LLM_TIMEOUT_SECONDS = int(os.getenv("LLM_TIMEOUT_SECONDS", "60"))
 
 PRODUCTS = [{
     "id": "prod_main",
@@ -1229,3 +1242,266 @@ def admin_list_point_transactions(email: str, limit: int = 100,
     } for r in rows]
     return {"email": email, "items": items,
             "balance_points": _milli_to_points(user["balance_milli"])}
+
+
+# ── LLM 托管代理（决策 7：打分走服务端模板，回复判断走透传+钳制）────
+# 提示词从插件原样搬运（sw.js 手动打分 / resume-collector.mjs 入库打分），
+# 联系方式脱敏与插件 maskContacts() 完全同规则；扣费按上游真实 usage。
+# 计费诚信底线：上游没给 usage = 视为异常，宁可失败不白给（LLM_USAGE_MISSING）。
+
+LLM_CHAT_SCENES = {"reply_judge", "collect_extract"}   # 透传端点允许的场景
+LLM_SCORE_DETAIL_SCENE = {"full": "resume_score", "brief": "collect_score"}
+LLM_MSG_MAX_ITEMS = 10
+LLM_MSG_MAX_CHARS = 20000      # 单条消息上限
+LLM_MSG_TOTAL_CHARS = 40000    # 整组消息上限
+LLM_TEXT_MAX_CHARS = 16000     # 简历/JD 文本上限（与插件 slice(0,16000) 一致）
+LLM_CHAT_DEFAULT_MAX_TOKENS = 800
+
+# 打分维度（与 sw.js DEFAULT_DIMENSIONS 一致）
+LLM_SCORE_DIMENSIONS = [
+    {"key": "match", "label": "岗位匹配度", "weight": 35},
+    {"key": "experience", "label": "工作经验", "weight": 25},
+    {"key": "skill", "label": "技能匹配", "weight": 20},
+    {"key": "education", "label": "学历背景", "weight": 10},
+    {"key": "stability", "label": "稳定性", "weight": 10},
+]
+
+# 进程内滑动窗口限流（单进程 uvicorn 部署下有效，重启即清零，与验证码防爆破同模式）
+_llm_rate_windows = {}
+_llm_rate_lock = threading.Lock()
+
+
+def require_vip(user_id: str) -> None:
+    """双闸门第一级：有效订阅（fail-closed）。"""
+    for s in user_subscriptions(user_id):
+        if s["status"] == "active":
+            return
+    raise AppError(403, "大模型功能需要有效会员，请先开通", "SUBSCRIPTION_REQUIRED")
+
+
+def _rate_limit_llm(user_id: str) -> None:
+    now = time.time()
+    with _llm_rate_lock:
+        win = [t for t in _llm_rate_windows.get(user_id, []) if now - t < 60]
+        if len(win) >= LLM_RATE_LIMIT_PER_MIN:
+            raise AppError(429, "调用过于频繁，请稍后再试", "LLM_RATE_LIMIT")
+        win.append(now)
+        _llm_rate_windows[user_id] = win
+
+
+def _mask_contacts(text: str) -> str:
+    """与插件 resume-collector.mjs maskContacts() 同规则：电话/邮箱不进模型。"""
+    text = re.sub(r"(?:\+?[\s-]*8[\s-]*6[\s-]*)?1[\s-]*[3-9](?:[\s-]*\d){9}",
+                  "[手机号已在本地提取]", text)
+    text = re.sub(
+        r"[A-Z0-9._%+-]+(?:\s*[A-Z0-9._%+-])*\s*@\s*[A-Z0-9-]+"
+        r"(?:\s*[A-Z0-9-])*\s*\.\s*[A-Z](?:\s*[A-Z])+",
+        "[邮箱已在本地提取]", text, flags=re.I)
+    return text
+
+
+def _validate_chat_messages(messages) -> list:
+    """透传端点的消息形态钳制：数量/角色/长度全卡，多余字段丢弃。"""
+    if not isinstance(messages, list) or not (1 <= len(messages) <= LLM_MSG_MAX_ITEMS):
+        raise AppError(400, "messages 须为 1-10 条的消息数组", "LLM_BAD_MESSAGES")
+    total = 0
+    out = []
+    for m in messages:
+        if not isinstance(m, dict):
+            raise AppError(400, "消息条目须为对象", "LLM_BAD_MESSAGES")
+        role = m.get("role")
+        content = m.get("content")
+        if role not in ("system", "user", "assistant"):
+            raise AppError(400, f"不支持的消息角色: {role}", "LLM_BAD_MESSAGES")
+        if not isinstance(content, str) or not content.strip():
+            raise AppError(400, "消息 content 须为非空字符串", "LLM_BAD_MESSAGES")
+        if len(content) > LLM_MSG_MAX_CHARS:
+            raise AppError(400, "单条消息过长", "LLM_BAD_MESSAGES")
+        total += len(content)
+        out.append({"role": role, "content": content})
+    if total > LLM_MSG_TOTAL_CHARS:
+        raise AppError(400, "消息总长度超限", "LLM_BAD_MESSAGES")
+    return out
+
+
+def _call_upstream(messages: list, max_tokens: int, temperature: float):
+    """调 dashscope OpenAI 兼容端点（非流式）。
+    返回 (content, prompt_tokens, completion_tokens)。
+    网络/HTTP 失败 → 502 不扣费；usage 缺失 → 502 不扣费（计费诚信，宁败不送）。"""
+    if not DASHSCOPE_API_KEY:
+        raise AppError(503, "服务端大模型未配置", "LLM_NOT_CONFIGURED")
+    url = LLM_BASE_URL.rstrip("/") + "/chat/completions"
+    body = json.dumps({
+        "model": LLM_MODEL,
+        "temperature": temperature,
+        "stream": False,          # 决策：三出口均非流式，usage 才可靠
+        "max_tokens": max_tokens,  # 服务端封顶，插件说了不算
+        "messages": messages,
+    }).encode("utf-8")
+    req = urllib.request.Request(url, data=body, headers={
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + DASHSCOPE_API_KEY,
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=LLM_TIMEOUT_SECONDS) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        detail = ""
+        try:
+            detail = e.read().decode("utf-8")[:200]
+        except Exception:
+            pass
+        raise AppError(502, f"上游模型调用失败（HTTP {e.code}）: {detail}",
+                       "LLM_UPSTREAM_ERROR")
+    except Exception:
+        raise AppError(502, "上游模型连接失败或超时", "LLM_UPSTREAM_ERROR")
+    usage = data.get("usage") or {}
+    prompt_tokens = usage.get("prompt_tokens")
+    completion_tokens = usage.get("completion_tokens")
+    if prompt_tokens is None or completion_tokens is None:
+        raise AppError(502, "上游未返回用量，本次不计费", "LLM_USAGE_MISSING")
+    try:
+        content = data["choices"][0]["message"]["content"] or ""
+    except (KeyError, IndexError, TypeError):
+        raise AppError(502, "上游返回结构异常", "LLM_UPSTREAM_ERROR")
+    return content, int(prompt_tokens), int(completion_tokens)
+
+
+def _llm_done(user_id: str, scene: str, prompt_tokens: int,
+              completion_tokens: int, note=None) -> dict:
+    """扣费 + 附当前余额/预警（前端只见点数，不见 token）。"""
+    bill = record_llm_usage(user_id, scene, prompt_tokens, completion_tokens,
+                            note=note)
+    bal = get_balance(user_id)
+    return {"balance_points": bill["balance_points"],
+            "warn_level": bal["warn_level"]}
+
+
+def llm_chat(user_id: str, scene: str, messages, max_tokens=None,
+             temperature=None) -> dict:
+    """透传+钳制：回复判断/采集提取等"提示词留在插件"的场景。
+    双闸门顺序：订阅 → 余额/日上限 → 每分钟限流。"""
+    if scene not in LLM_CHAT_SCENES:
+        raise AppError(400, "未知的计费场景", "BILLING_INVALID_SCENE")
+    msgs = _validate_chat_messages(messages)
+    require_vip(user_id)
+    check_llm_allowance(user_id, scene)
+    _rate_limit_llm(user_id)
+    mt = LLM_CHAT_DEFAULT_MAX_TOKENS if not max_tokens else int(max_tokens)
+    mt = max(1, min(mt, LLM_MAX_TOKENS_CAP))
+    temp = 0.3 if temperature is None else max(0.0, min(float(temperature), 1.0))
+    content, pt, ct = _call_upstream(msgs, mt, temp)
+    done = _llm_done(user_id, scene, pt, ct)
+    return {"ok": True, "content": content, **done}
+
+
+def _score_prompt_full(jd: str, dimensions) -> str:
+    """与 sw.js buildSystemPrompt() 逐字一致。"""
+    dim_text = "\n".join(
+        f"- {d['label']}（key={d['key']}，权重 {d['weight']}%）"
+        for d in dimensions)
+    return "\n".join([
+        "你是一名资深招聘专家。下面是从简历页面 canvas 抓取的候选人文本，",
+        "文字顺序可能错乱、有碎片，请先重排、结构化，再依据岗位要求打分。",
+        "",
+        "【岗位要求 / JD】",
+        jd or "（未提供，按通用标准评估）",
+        "",
+        "【评分维度】",
+        dim_text,
+        "",
+        "【输出要求】严格只输出 JSON，不要多余文字、不要代码块包裹：",
+        '{"overall":<0-100整数,按权重加权>,"dimensions":[{"key":"...","label":"...",'
+        '"score":<0-100>,"reason":"一句话依据"}],"highlights":["亮点"],'
+        '"risks":["风险"],"recommendation":"强烈推荐|推荐|一般|不推荐",'
+        '"summary":"两三句总评"}',
+    ])
+
+
+def _score_prompt_brief(jd: str) -> str:
+    """与 resume-collector.mjs buildScorePrompt() 逐字一致。"""
+    return "\n".join([
+        "你是资深招聘专家。下面是从简历页面抓取的候选人文本，顺序可能错乱、有碎片，",
+        "请先重排、结构化，再依据岗位要求打分。",
+        "",
+        "【岗位要求 / JD】",
+        jd or "（未提供，按通用标准评估）",
+        "",
+        "严格只输出 JSON，不要多余文字、不要代码块包裹：",
+        '{"overall":<0-100整数>,"recommendation":"强烈推荐|推荐|一般|不推荐",'
+        '"summary":"两三句总评"}',
+    ])
+
+
+def _parse_llm_json(text: str) -> dict:
+    """与插件 parseJson/parseJsonObject 同逻辑：去代码块、取首尾大括号。"""
+    if not text:
+        raise AppError(502, "模型返回为空", "LLM_BAD_RESPONSE")
+    s = re.sub(r"^```(?:json)?", "", text.strip(), flags=re.I).strip()
+    s = re.sub(r"```$", "", s).strip()
+    a, b = s.find("{"), s.rfind("}")
+    if a != -1 and b != -1:
+        s = s[a:b + 1]
+    try:
+        return json.loads(s)
+    except json.JSONDecodeError:
+        raise AppError(502, "模型未返回有效 JSON", "LLM_BAD_RESPONSE")
+
+
+def _valid_dimensions(dimensions) -> list:
+    """自定义维度校验（与插件 payload.dimensions 同形）；非法则回落默认。"""
+    if not isinstance(dimensions, list) or not dimensions:
+        return LLM_SCORE_DIMENSIONS
+    out = []
+    for d in dimensions[:8]:
+        if not isinstance(d, dict):
+            return LLM_SCORE_DIMENSIONS
+        key = str(d.get("key", ""))[:30]
+        label = str(d.get("label", ""))[:30]
+        try:
+            weight = int(d.get("weight"))
+        except (TypeError, ValueError):
+            return LLM_SCORE_DIMENSIONS
+        if not key or not label or not (0 < weight <= 100):
+            return LLM_SCORE_DIMENSIONS
+        out.append({"key": key, "label": label, "weight": weight})
+    return out or LLM_SCORE_DIMENSIONS
+
+
+def llm_score_resume(user_id: str, jd_text: str, resume_text: str,
+                     detail: str = "full", dimensions=None) -> dict:
+    """服务端模板打分：插件只传 jd_text+resume_text，提示词这里组装。
+    detail=full（手动打分页，带维度）/ brief（入库自动打分，简版省 token）。"""
+    if detail not in LLM_SCORE_DETAIL_SCENE:
+        raise AppError(400, "detail 须为 full 或 brief", "LLM_BAD_DETAIL")
+    resume_text = (resume_text or "").strip()
+    if len(resume_text) < 20:
+        raise AppError(400, "简历文本为空或过短，可能未成功抓取到内容",
+                       "LLM_RESUME_TOO_SHORT")
+    scene = LLM_SCORE_DETAIL_SCENE[detail]
+    require_vip(user_id)
+    check_llm_allowance(user_id, scene)
+    _rate_limit_llm(user_id)
+    jd = (jd_text or "")[:LLM_TEXT_MAX_CHARS]
+    masked = _mask_contacts(resume_text)[:LLM_TEXT_MAX_CHARS]
+    if detail == "full":
+        sys_prompt = _score_prompt_full(jd, _valid_dimensions(dimensions))
+        user_content = "【候选人简历文本】\n" + masked
+        max_tokens, temp = 2000, 0.3
+    else:
+        sys_prompt = _score_prompt_brief(jd)
+        user_content = masked
+        max_tokens, temp = 500, 0.2
+    content, pt, ct = _call_upstream(
+        [{"role": "system", "content": sys_prompt},
+         {"role": "user", "content": user_content}],
+        max_tokens, temp)
+    result = _parse_llm_json(content)
+    overall = result.get("overall")
+    if not isinstance(overall, (int, float)):
+        raise AppError(502, "模型返回缺少 overall 评分", "LLM_BAD_RESPONSE")
+    # 解析失败不扣费（上面两处 raise 在扣费之前）：用户买不到空气，
+    # 上游成本公司承担；坏输出没有套利价值，不构成滥用缺口。
+    result["overall"] = max(0, min(100, int(overall)))
+    done = _llm_done(user_id, scene, pt, ct)
+    return {"ok": True, "result": result, **done}
