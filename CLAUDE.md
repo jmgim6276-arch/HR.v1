@@ -1,6 +1,6 @@
 # CLAUDE.md — 凯旋智聘（智能招聘助手）
 
-BOSS直聘 招聘自动化 Chrome 扩展（MV3）+ FastAPI/SQLite 云端后端。本目录是「一阶段备份」，**非 git 仓库**（改动前把原文件备份进 `_core_backup_*/`，可整文件还原）。
+BOSS直聘 招聘自动化 Chrome 扩展（MV3）+ FastAPI/SQLite 云端后端。本目录是「一阶段备份」，**2026-08-27 起已 git 化**（本地仓库、无远程；改动用 commit 管理、回滚用 git，不再新建 `_core_backup_*`；既有 13 个还原点留盘但已 gitignore，真机验收后按原计划清场）。
 
 ## 怎么跑 / 怎么测
 - 起后端：`cd backend && uvicorn main:app --host 0.0.0.0 --port 8080`（开发期 `DEV_MODE=true`，验证码打印在终端）。

@@ -23,3 +23,4 @@ _core_backup_*/
 # ── 系统/工具 ──
 .DS_Store
 node_modules/
+.claude/
