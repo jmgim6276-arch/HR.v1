@@ -1,0 +1,185 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-27",
+  "title": "Design System: 凯旋智聘",
+  "extensions": {
+    "colorMeta": {
+      "iris-indigo": {
+        "role": "primary",
+        "displayName": "鸢尾靛（Iris Indigo）",
+        "canonical": "#5b5bd6",
+        "tonalRamp": ["oklch(0.25 0.09 280)", "oklch(0.32 0.12 280)", "oklch(0.40 0.14 280)", "oklch(0.50 0.15 280)", "oklch(0.60 0.13 280)", "oklch(0.70 0.10 280)", "oklch(0.82 0.06 280)", "oklch(0.93 0.02 280)"]
+      },
+      "iris-indigo-bg": {
+        "role": "primary",
+        "displayName": "鸢尾靛浅底",
+        "canonical": "#eeeefb",
+        "tonalRamp": ["oklch(0.50 0.15 280)", "oklch(0.60 0.12 280)", "oklch(0.70 0.09 280)", "oklch(0.78 0.06 280)", "oklch(0.85 0.04 280)", "oklch(0.90 0.025 280)", "oklch(0.94 0.015 280)", "oklch(0.97 0.008 280)"]
+      },
+      "gold-member": {
+        "role": "tertiary",
+        "displayName": "会员金（Gold Member）",
+        "canonical": "#b08a3e",
+        "tonalRamp": ["oklch(0.28 0.06 85)", "oklch(0.36 0.08 85)", "oklch(0.45 0.10 85)", "oklch(0.55 0.11 85)", "oklch(0.62 0.11 85)", "oklch(0.72 0.09 85)", "oklch(0.83 0.06 85)", "oklch(0.93 0.02 85)"]
+      },
+      "success": {
+        "role": "secondary",
+        "displayName": "运行绿（Success）",
+        "canonical": "#30a46c",
+        "tonalRamp": ["oklch(0.24 0.05 155)", "oklch(0.32 0.08 155)", "oklch(0.42 0.11 155)", "oklch(0.52 0.13 155)", "oklch(0.60 0.13 155)", "oklch(0.71 0.10 155)", "oklch(0.83 0.06 155)", "oklch(0.94 0.02 155)"]
+      },
+      "warn": {
+        "role": "secondary",
+        "displayName": "预警橙（Warn）",
+        "canonical": "#f5a623",
+        "tonalRamp": ["oklch(0.30 0.07 75)", "oklch(0.40 0.10 75)", "oklch(0.50 0.13 75)", "oklch(0.62 0.15 75)", "oklch(0.75 0.15 75)", "oklch(0.83 0.12 75)", "oklch(0.90 0.07 75)", "oklch(0.96 0.03 75)"]
+      },
+      "danger": {
+        "role": "secondary",
+        "displayName": "危险红（Danger）",
+        "canonical": "#e5484d",
+        "tonalRamp": ["oklch(0.26 0.08 25)", "oklch(0.34 0.13 25)", "oklch(0.44 0.18 25)", "oklch(0.58 0.20 25)", "oklch(0.66 0.17 25)", "oklch(0.75 0.12 25)", "oklch(0.85 0.07 25)", "oklch(0.94 0.02 25)"]
+      },
+      "fg": {
+        "role": "neutral",
+        "displayName": "墨黑（FG）",
+        "canonical": "#1c1d21",
+        "tonalRamp": ["oklch(0.20 0.008 260)", "oklch(0.30 0.010 260)", "oklch(0.42 0.012 260)", "oklch(0.55 0.012 260)", "oklch(0.66 0.010 260)", "oklch(0.77 0.008 260)", "oklch(0.87 0.005 260)", "oklch(0.96 0.003 260)"]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "灰蓝（Muted）",
+        "canonical": "#6b7280",
+        "tonalRamp": ["oklch(0.25 0.010 260)", "oklch(0.35 0.012 260)", "oklch(0.45 0.014 260)", "oklch(0.50 0.015 260)", "oklch(0.60 0.013 260)", "oklch(0.72 0.010 260)", "oklch(0.84 0.006 260)", "oklch(0.95 0.003 260)"]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "雾面（Surface）",
+        "canonical": "#f6f7f9",
+        "tonalRamp": ["oklch(0.40 0.012 260)", "oklch(0.52 0.012 260)", "oklch(0.64 0.010 260)", "oklch(0.75 0.008 260)", "oklch(0.85 0.006 260)", "oklch(0.91 0.004 260)", "oklch(0.96 0.003 260)", "oklch(0.99 0.001 260)"]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "页面级标题（section-title），仅页首一处。" },
+      "title": { "displayName": "Title", "purpose": "卡片标题、模块名、计划名。" },
+      "body": { "displayName": "Body", "purpose": "正文与控件文字，紧凑是刻意的。" },
+      "label": { "displayName": "Label", "purpose": "字段标签、辅助说明，Muted 色。" },
+      "mono": { "displayName": "Mono", "purpose": "数字、统计值、状态行、时间戳、日志，配合 tabular-nums。" }
+    },
+    "shadows": [
+      { "name": "ambient-sm", "value": "0 1px 2px rgba(20,21,26,0.06)", "purpose": "卡片、主按钮、选中标签的常驻环境淡影。" },
+      { "name": "ambient-md", "value": "0 4px 12px rgba(20,21,26,0.08)", "purpose": "需要略浮起的容器（内容流上限）。" },
+      { "name": "raised", "value": "0 12px 32px rgba(0,0,0,0.08)", "purpose": "仅模态/弹层（弹层才抬升规则）。" },
+      { "name": "focus-ring", "value": "0 0 0 4px color-mix(in oklab, #5b5bd6, transparent 65%)", "purpose": "键盘/输入聚焦的唯一表达。" },
+      { "name": "logo-glow", "value": "0 2px 6px rgba(91,91,214,0.35)", "purpose": "仅侧栏猫头鹰 logo 的品牌光晕。" }
+    ],
+    "motion": [
+      { "name": "ease-standard", "value": "cubic-bezier(0.28, 0, 0.22, 1)", "purpose": "全系统统一缓动。" },
+      { "name": "duration-hover", "value": "0.15s", "purpose": "hover/颜色过渡。" },
+      { "name": "duration-default", "value": "0.2s", "purpose": "按钮全属性过渡、淡入动画。" },
+      { "name": "duration-toast", "value": "0.3s", "purpose": "Toast 淡入淡出。" },
+      { "name": "press-feedback", "value": "translateY(0.5px)", "purpose": "按钮按压位移（0.05s）。" }
+    ],
+    "breakpoints": [
+      { "name": "sidepanel-floor", "value": "340px", "purpose": "侧栏最小宽度；低于此模块/统计网格降为单列。" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Pill Button",
+      "kind": "button",
+      "refersTo": "button-pill-primary",
+      "description": "每屏唯一的主行动按钮（唯一声部规则）；新页面一律用 pill 代。",
+      "html": "<button class=\"ds-btn-primary\">开始运行</button>",
+      "css": ".ds-btn-primary { background: #5b5bd6; color: #ffffff; border: 1px solid transparent; border-radius: 999px; padding: 8px 16px; font-family: -apple-system, \"SF Pro Display\", \"PingFang SC\", sans-serif; font-size: 13px; font-weight: 600; box-shadow: 0 1px 2px rgba(20,21,26,0.06); cursor: pointer; transition: background 0.15s, box-shadow 0.15s, transform 0.05s; } .ds-btn-primary:hover { background: #4f4fce; } .ds-btn-primary:active { transform: translateY(0.5px); background: #4444bd; } .ds-btn-primary:focus-visible { outline: none; box-shadow: 0 0 0 4px rgba(91,91,214,0.35); } .ds-btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "次要的肯定动作：鸢尾靛浅底 + 鸢尾靛字。",
+      "html": "<button class=\"ds-btn-ghost\">查看明细</button>",
+      "css": ".ds-btn-ghost { background: #eeeefb; color: #5b5bd6; border: 1px solid transparent; border-radius: 8px; padding: 9px 16px; font-family: -apple-system, \"SF Pro Display\", \"PingFang SC\", sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.15s, transform 0.05s; } .ds-btn-ghost:hover { background: #e4e4f8; } .ds-btn-ghost:active { transform: translateY(0.5px); } .ds-btn-ghost:focus-visible { outline: none; box-shadow: 0 0 0 4px rgba(91,91,214,0.35); }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input-text",
+      "description": "纸白底 + 1px 描边 + 8px 圆角；聚焦 = 靛描边 + 4px 聚焦环。",
+      "html": "<input class=\"ds-input\" type=\"text\" placeholder=\"输入岗位名称\" />",
+      "css": ".ds-input { width: 100%; background: #ffffff; color: #1c1d21; border: 1px solid #e8e9ee; border-radius: 8px; padding: 9px 12px; font-family: -apple-system, \"SF Pro Text\", \"PingFang SC\", sans-serif; font-size: 14px; transition: border-color 0.15s, box-shadow 0.15s; } .ds-input::placeholder { color: #9ca3af; } .ds-input:focus { outline: none; border-color: #5b5bd6; box-shadow: 0 0 0 4px rgba(91,91,214,0.35); }"
+    },
+    {
+      "name": "Switch",
+      "kind": "input",
+      "refersTo": "input-text",
+      "description": "模块总开关：开启 = 鸢尾靛轨道；核心控件。",
+      "html": "<label class=\"ds-switch\"><input type=\"checkbox\" checked /><span class=\"ds-slider\"></span></label>",
+      "css": ".ds-switch { position: relative; display: inline-block; width: 50px; height: 28px; } .ds-switch input { opacity: 0; width: 0; height: 0; } .ds-slider { position: absolute; inset: 0; background: #d1d3da; border-radius: 999px; transition: background 0.2s cubic-bezier(0.28,0,0.22,1); cursor: pointer; } .ds-slider::before { content: \"\"; position: absolute; width: 22px; height: 22px; left: 3px; top: 3px; background: #ffffff; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,0.2); transition: transform 0.2s cubic-bezier(0.28,0,0.22,1); } .ds-switch input:checked + .ds-slider { background: #5b5bd6; } .ds-switch input:checked + .ds-slider::before { transform: translateX(22px); } .ds-switch input:focus-visible + .ds-slider { box-shadow: 0 0 0 4px rgba(91,91,214,0.35); }"
+    },
+    {
+      "name": "Section Card",
+      "kind": "card",
+      "refersTo": "card-section",
+      "description": "页面的基本组织单元：纸白 + 描边 + 10px 圆角 + 环境淡影。",
+      "html": "<div class=\"ds-card\"><div class=\"ds-card-title\">运行参数</div><div class=\"ds-card-body\">每轮上限 5 人 · 间隔 60 秒 · 点击前等待 4 秒</div></div>",
+      "css": ".ds-card { background: #ffffff; border: 1px solid #e8e9ee; border-radius: 10px; box-shadow: 0 1px 2px rgba(20,21,26,0.06); padding: 12px; } .ds-card-title { font-family: -apple-system, \"SF Pro Display\", \"PingFang SC\", sans-serif; font-size: 15px; font-weight: 600; color: #1c1d21; margin-bottom: 8px; letter-spacing: -0.01em; } .ds-card-body { font-family: -apple-system, \"SF Pro Text\", \"PingFang SC\", sans-serif; font-size: 13px; color: #6b7280; line-height: 1.47; }"
+    },
+    {
+      "name": "Stat Cell",
+      "kind": "custom",
+      "refersTo": "stat-cell",
+      "description": "运行统计格：雾面底 + mono 数值；5 列网格一屏看全（数字等宽规则）。",
+      "html": "<div class=\"ds-stat\"><div class=\"ds-stat-value\">128</div><div class=\"ds-stat-label\">已打招呼</div></div>",
+      "css": ".ds-stat { background: #f6f7f9; border-radius: 8px; padding: 8px 4px; text-align: center; } .ds-stat-value { font-family: \"SF Mono\", ui-monospace, Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; font-size: 15px; font-weight: 600; color: #1c1d21; } .ds-stat-label { font-family: -apple-system, \"SF Pro Text\", \"PingFang SC\", sans-serif; font-size: 11px; color: #9ca3af; margin-top: 2px; }"
+    },
+    {
+      "name": "Nav Item (Active)",
+      "kind": "nav",
+      "refersTo": "nav-item-active",
+      "description": "侧栏导航激活态：鸢尾靛浅底 + 靛字 + 600，是唯一允许的大面积靛浅底。",
+      "html": "<a class=\"ds-nav-item ds-active\"><svg class=\"ds-nav-icon\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2\"/><circle cx=\"9\" cy=\"7\" r=\"4\"/></svg>人才库</a>",
+      "css": ".ds-nav-item { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 8px; color: #3a3d44; font-family: -apple-system, \"SF Pro Text\", \"PingFang SC\", sans-serif; font-size: 13px; font-weight: 500; cursor: pointer; text-decoration: none; transition: background 0.15s, color 0.15s; } .ds-nav-item:hover { background: rgba(0,0,0,0.04); } .ds-nav-item.ds-active { background: #eeeefb; color: #5b5bd6; font-weight: 600; } .ds-nav-icon { width: 16px; height: 16px; opacity: 0.75; flex-shrink: 0; }"
+    },
+    {
+      "name": "VIP Tag",
+      "kind": "chip",
+      "refersTo": "tag-vip",
+      "description": "会员身份标记：18% 金透明底 + 金字（金色专属规则，永不用于装饰）。",
+      "html": "<span class=\"ds-tag-vip\">专业版</span>",
+      "css": ".ds-tag-vip { display: inline-block; background: rgba(176,138,62,0.18); color: #b08a3e; padding: 2px 8px; border-radius: 4px; font-family: -apple-system, \"SF Pro Text\", \"PingFang SC\", sans-serif; font-size: 11px; font-weight: 600; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "「macOS 原生工具」（The Native macOS Utility）",
+    "overview": "凯旋智聘的界面应当像 macOS 自带应用：启动就在、零学习成本、绝不抢戏。用户是使用 BOSS直聘 的招聘者——不是技术人员——所以界面的一切复杂都必须消失在熟悉的系统感之后：SF Pro 原生字栈、柔和中性灰、一个克制的靛紫强调色。品牌（猫头鹰、凯旋智聘字标）活在精确的细节里，而不是大面积的色块里。这是一套 Operate 型系统：用户来这里完成任务，扫读效率和一致性永远优先于表达欲。密度保持紧凑——侧栏宽度有限，运行状态要一屏看全。",
+    "keyCharacteristics": [
+      "原生系统感：不引入网络字体、不用渐变、不用大面积品牌色",
+      "紧凑密度：正文 13–14px、间距 4–16px、统计格 5 列一屏",
+      "一个强调色：鸢尾靛负责所有\"可点/激活/运行中\"信号",
+      "轻环境影 + 状态抬升：卡片常驻淡影，只有弹层/模态获得深影",
+      "admin 运营后台是同一语言的变体，允许更密更糙，但不另起炉灶"
+    ],
+    "rules": [
+      { "name": "The One Voice Rule", "body": "任意一屏里，实心鸢尾靛只出现在一个主行动和必要的激活态上（导航选中、开关开启）。它的稀有就是它的信号价值；一片靛紫等于没有信号。", "section": "colors" },
+      { "name": "The Gold Reservation Rule", "body": "金只表示\"钱/会员身份\"，永不用于装饰、评分星级或一般高亮。", "section": "colors" },
+      { "name": "The Native Stack Rule", "body": "永不引入网络字体。任何\"更有个性的字体\"都与北极星矛盾。", "section": "typography" },
+      { "name": "The Tabular Figures Rule", "body": "凡会跳变的数字（余额、计数、统计格）一律 mono 字栈或 font-variant-numeric: tabular-nums，防止布局抖动。", "section": "typography" },
+      { "name": "The Lift-On-Overlay Rule", "body": "Raised 级阴影只给覆盖层。内容流里的元素最高到 Ambient MD——如果一张卡片\"浮起来了\"，那是 bug。", "section": "elevation" }
+    ],
+    "dos": [
+      "Do 新页面用 pill 主按钮 + section 卡片 + 紧凑间距，与一键运行页同代。",
+      "Do 数字与运行状态一律 mono 字栈（等宽数字规则）。",
+      "Do 每屏只放一个实心鸢尾靛主行动（唯一声部规则）。",
+      "Do 聚焦态统一用 4px 鸢尾靛聚焦环，包括自定义控件。",
+      "Do 会员/付费相关标记只用会员金（金色专属规则）。"
+    ],
+    "donts": [
+      "Don't 引入网络字体、渐变、大面积品牌色块——与「macOS 原生工具」矛盾。",
+      "Don't 给内容流元素使用 Raised 级阴影（弹层才抬升规则）。",
+      "Don't 编造深色模式：调试台的深色词汇不外溢，产品当前仅浅色。",
+      "Don't 新增强调色或第五档功能色；现有 靛/金/绿/橙/红 已覆盖全部语义。",
+      "Don't 放松密度：正文不小于 12px、间距不超出 4–16px 阶梯。"
+    ]
+  }
+}
