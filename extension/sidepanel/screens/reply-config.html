@@ -82,12 +82,16 @@
     .modal-header h3 { margin: 0; font-family: var(--font-display); font-size: var(--text-base); font-weight: 600; }
     .modal-close { background: none; border: none; font-size: 18px; color: var(--muted); cursor: pointer; line-height: 1; padding: 4px; }
     .modal-body { padding: var(--space-4); overflow-y: auto; }
-    .qr-placeholder {
-      width: 168px; height: 168px; margin: 0 auto var(--space-4);
-      border: 1.5px dashed var(--border); border-radius: var(--radius-md);
-      display: flex; align-items: center; justify-content: center;
-      color: var(--meta); font-size: var(--text-xs); text-align: center; padding: 10px;
-      background: var(--surface);
+    .qr-frame {
+      width: 200px; margin: 0 auto var(--space-3);
+      border: 1px solid var(--border-soft); border-radius: var(--radius-md);
+      overflow: hidden; background: #fff; /* 二维码须白底保证可扫 */
+      padding: 8px;
+    }
+    .qr-frame img { display: block; width: 100%; }
+    .qr-caption {
+      text-align: center; font-size: var(--text-xs); color: var(--muted);
+      margin-bottom: var(--space-4);
     }
     .recharge-note { font-size: var(--text-xs); color: var(--fg-2); line-height: 1.7; }
     .recharge-note .acct {
@@ -183,13 +187,16 @@
         <button class="modal-close" id="btnCloseModal" aria-label="关闭">×</button>
       </div>
       <div class="modal-body">
-        <div class="qr-placeholder">收款码<br>（接入中，请按下方人工流程充值）</div>
+        <div class="qr-frame">
+          <img src="images/official-payment-qr.png" alt="官方收款码（微信支付）">
+        </div>
+        <div class="qr-caption">微信扫码支付 · 1 元 = 10 点</div>
         <div class="recharge-note">
           当前为人工充值。请按以下步骤操作：
           <ol>
-            <li>使用对公转账或联系客服获取收款方式。</li>
-            <li>转账时备注您的注册邮箱：<span class="acct" id="acctEmail">加载中…</span></li>
-            <li>客服确认收款后，会为该账号充值点数，充值后功能自动恢复。</li>
+            <li>使用微信扫描上方官方收款码付款（需对公转账请联系客服）。</li>
+            <li>付款时备注您的注册邮箱：<span class="acct" id="acctEmail">加载中…</span></li>
+            <li>客服确认收款后按付款金额折算点数充入该账号，充值后功能自动恢复。</li>
           </ol>
         </div>
       </div>
