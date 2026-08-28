@@ -1,7 +1,12 @@
 /**
- * 三模块统一流水线：打招呼 -> 切换沟通页 -> 自动回复与简历采集协调监听。
+ * 三模块循环编排：打招呼（每轮 N 人）⇄ 沟通页监听（自动回复与简历采集）。
  *
  * 本模块只负责编排，不复制各业务模块的筛选、回复或采集逻辑。
+ * 循环语义（2026-08-28 拍板）：
+ *  - 每轮打招呼打满 greetingCap 人（0=打到列表自然结束）后切沟通页监听；
+ *  - 监听阶段连续 EARLY_RETURN_EMPTY_PASSES 个回复轮零送出、采集统计零增长 → 立即回打招呼；
+ *  - listenDurationMinutes 是单次监听的安全上限，到点也回打招呼（无打招呼模块时维持原 finish 语义）；
+ *  - 打招呼连续 EMPTY_ROUND_LIMIT 轮 0 人 → 进入最后一次监听，该次结束即 finish。
  */
 
 const COMMAND = {
@@ -26,6 +31,13 @@ const REPLY_RESTART_ALARM = 'unified-workflow-reply-restart';
 const RISK_PATTERN = /安全验证|操作频繁|访问过于频繁|账号异常|请完成验证|登录|订阅|页面结构|页面已离开|无法确认|内容脚本|网络异常/i;
 const GREETING_COMPLETE_PATTERN = /所有岗位已按顺序处理完成|全部岗位.*完成|处理完成/;
 const LISTEN_COMPLETE_PATTERN = /持续监听窗口已完成|监听.*完成/;
+// 回复活动信号：CS 回复引擎真实送出话术的日志以 📤 开头（index.js，全库唯一）；
+// ⏭️ 跳过类日志是规则已处理的判断，不算待办活动。
+const REPLY_ACTIVITY_PATTERN = /^📤/;
+// 监听阶段连续几个零活动回复轮后提前回打招呼
+const EARLY_RETURN_EMPTY_PASSES = 2;
+// 打招呼连续几轮 0 人后进入最后一次监听并收尾
+const EMPTY_ROUND_LIMIT = 3;
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -38,12 +50,20 @@ function defaultRuntime() {
     startedAt: 0,
     deadlineAt: 0,
     pausedStage: '',
+    pausedAt: 0,
     resumeLock: false,
     logs: [],
     moduleStates: { greeting: 'idle', reply: 'idle', resume: 'idle' },
-    greetingCumulative: 0,
-    greetingHighWaterMark: 0,
-    greetingCap: 0,
+    // 循环模式计数
+    cycleCount: 0,
+    greetingRoundCount: 0,
+    consecutiveEmptyRounds: 0,
+    consecutiveEmptyPasses: 0,
+    lastResumeStatSum: 0,
+    lastActivityAt: 0,
+    passStartedAt: 0,
+    capStopPending: false,
+    finalListen: false,
   };
 }
 
@@ -180,7 +200,7 @@ export function createWorkflowOrchestrator({
       await runCommand('cmd_stop_greeting').catch(() => {});
     }
     runtime.moduleStates = { ...runtime.moduleStates, reply: 'idle', resume: 'idle' };
-    await update({ state: 'idle', stage: 'completed', statusText, resumeLock: false });
+    await update({ state: 'idle', stage: 'completed', statusText, resumeLock: false, pausedAt: 0, capStopPending: false, finalListen: false });
     await log(`✅ ${statusText}`);
   }
 
@@ -188,7 +208,7 @@ export function createWorkflowOrchestrator({
     if (runtime.state === 'paused') return publicRuntime(runtime);
     if (runtime.config?.modules?.greeting) await runCommand('cmd_pause_greeting').catch(() => {});
     if (runtime.config?.modules?.reply) await runCommand('cmd_pause').catch(() => {});
-    await update({ state: 'paused', pausedStage: stage, stage, statusText: `需人工处理：${reason}` });
+    await update({ state: 'paused', pausedStage: stage, stage, pausedAt: Date.now(), statusText: `需人工处理：${reason}` });
     await log(`⏸ 流水线已暂停：${reason}`, 'warn');
     return publicRuntime(runtime);
   }
@@ -229,14 +249,52 @@ export function createWorkflowOrchestrator({
       }
 
       runtime.deadlineAt = Date.now() + runtime.config.listenDurationMinutes * 60 * 1000;
+      const listeningText = runtime.config.modules.greeting
+        ? `第 ${runtime.cycleCount || 1} 轮监听：无回复、无新简历将自动返回打招呼（上限 ${runtime.config.listenDurationMinutes} 分钟）`
+        : `自动回复与简历采集协调运行中（${runtime.config.listenDurationMinutes} 分钟）`;
       await update({
         state: 'running',
         stage: 'listening',
-        statusText: `自动回复与简历采集协调运行中（${runtime.config.listenDurationMinutes} 分钟）`,
+        consecutiveEmptyPasses: 0,
+        lastActivityAt: 0,
+        passStartedAt: Date.now(),
+        statusText: listeningText,
       });
       await scheduleDeadline();
     })().catch(async err => {
       await pauseForManual(err.message, 'switching_to_chat');
+      throw err;
+    }).finally(() => {
+      transitionPromise = null;
+    });
+    return transitionPromise;
+  }
+
+  async function enterGreetingStage() {
+    if (transitionPromise) return transitionPromise;
+    transitionPromise = (async () => {
+      await chrome.alarms.clear(DEADLINE_ALARM).catch(() => {});
+      await chrome.alarms.clear(REPLY_RESTART_ALARM).catch(() => {});
+      if (runtime.config?.modules?.reply) await runCommand('cmd_stop').catch(() => {});
+      if (runtime.config?.modules?.resume) await stopResumeCollector().catch(() => {});
+      runtime.moduleStates = { ...runtime.moduleStates, reply: 'idle', resume: 'idle' };
+      const cycle = (runtime.cycleCount || 0) + 1;
+      await update({
+        state: 'running',
+        stage: 'greeting',
+        cycleCount: cycle,
+        greetingRoundCount: 0,
+        capStopPending: false,
+        deadlineAt: 0,
+        statusText: `第 ${cycle} 轮：正在返回推荐页打招呼`,
+      });
+      await log(`🔁 第 ${cycle} 轮：回到推荐页继续打招呼`);
+      await refreshModuleApprovals();
+      await runCommand('cmd_start_greeting');
+      runtime.moduleStates.greeting = 'running';
+      await update({ statusText: `第 ${cycle} 轮：正在推荐牛人页面筛选、打招呼并索要简历` });
+    })().catch(async err => {
+      await pauseForManual(err.message, 'greeting');
       throw err;
     }).finally(() => {
       transitionPromise = null;
@@ -260,9 +318,7 @@ export function createWorkflowOrchestrator({
       config,
       startedAt: Date.now(),
       moduleStates: { greeting: 'idle', reply: 'idle', resume: 'idle' },
-      greetingCumulative: 0,
-      greetingHighWaterMark: 0,
-      greetingCap: config.greetingCap || 0,
+      cycleCount: config.modules.greeting ? 1 : 0,
     };
     await chrome.storage.local.set({ [CONFIG_KEY]: config, [RUNTIME_KEY]: runtime });
     emitStatus();
@@ -295,7 +351,7 @@ export function createWorkflowOrchestrator({
       stopResumeCollector(),
     ]);
     runtime.moduleStates = { greeting: 'idle', reply: 'idle', resume: 'idle' };
-    await update({ state: 'idle', stage: 'stopped', statusText: '用户已停止联动任务', resumeLock: false });
+    await update({ state: 'idle', stage: 'stopped', statusText: '用户已停止联动任务', resumeLock: false, pausedAt: 0, capStopPending: false, finalListen: false });
     await log('⏹ 用户已停止整条流水线');
     return publicRuntime(runtime);
   }
@@ -315,7 +371,7 @@ export function createWorkflowOrchestrator({
           await runCommand('cmd_start_greeting');
         }
         runtime.moduleStates.greeting = 'running';
-        await update({ stage: 'greeting', pausedStage: '', statusText: '已恢复打招呼阶段' });
+        await update({ stage: 'greeting', pausedStage: '', pausedAt: 0, statusText: '已恢复打招呼阶段' });
       } else {
         await ensureChatPage();
         if (runtime.config.modules.reply) {
@@ -343,8 +399,12 @@ export function createWorkflowOrchestrator({
           }
           runtime.moduleStates.resume = 'running';
         }
+        // 暂停等待人工处理的时间不计入监听窗口：截止时间按暂停时长顺延，保留 60s 下限
+        if (runtime.pausedAt && runtime.deadlineAt) {
+          runtime.deadlineAt += Date.now() - runtime.pausedAt;
+        }
         runtime.deadlineAt = Math.max(runtime.deadlineAt || 0, Date.now() + 60 * 1000);
-        await update({ stage: 'listening', pausedStage: '', statusText: '已恢复协调监听' });
+        await update({ stage: 'listening', pausedStage: '', pausedAt: 0, statusText: '已恢复协调监听' });
         await scheduleDeadline();
       }
       await log('▶ 人工确认完成，流水线已从中断阶段恢复');
@@ -398,6 +458,7 @@ export function createWorkflowOrchestrator({
       if (runtime.moduleStates.reply === 'idle') {
         await refreshModuleApprovals();
         await runCommand('cmd_start').catch(() => {});
+        runtime.passStartedAt = Date.now();
       } else {
         await runCommand('cmd_resume').catch(() => {});
       }
@@ -411,40 +472,71 @@ export function createWorkflowOrchestrator({
     await ready;
     if (!message?.action || !message.data || runtime.state !== 'running') return;
     const data = message.data;
+    // 每完成一条打招呼计数（达到每轮上限则强停打招呼，等 idle 后切监听）
+    if (message.action === 'new_greeting_record' && runtime.stage === 'greeting') {
+      runtime.greetingRoundCount += 1;
+      runtime.lastActivityAt = Date.now();
+      const cap = runtime.config?.greetingCap || 0;
+      if (cap > 0 && runtime.greetingRoundCount >= cap) {
+        runtime.capStopPending = true;
+        await log(`🛑 本轮打招呼已达每轮上限 ${cap} 人，切换到沟通页监听`);
+        await runCommand('cmd_stop_greeting').catch(() => {});
+      }
+      await persist();
+      return;
+    }
     if (message.action === 'greeting_status_report' && runtime.stage === 'greeting') {
       runtime.moduleStates.greeting = data.state || runtime.moduleStates.greeting;
-      const progressMatch = (data.statusText || '').match(/打招呼进度\s+(\d+)\/(\d+)/);
-      if (progressMatch) {
-        const n = Number(progressMatch[1]);
-        if (n < runtime.greetingHighWaterMark) {
-          runtime.greetingCumulative += runtime.greetingHighWaterMark;
-          runtime.greetingHighWaterMark = n;
-        } else {
-          runtime.greetingHighWaterMark = n;
-        }
-        const total = runtime.greetingCumulative + runtime.greetingHighWaterMark;
-        if (runtime.greetingCap > 0 && total >= runtime.greetingCap && data.state === 'running') {
-          await log(`🛑 打招呼已达编排上限 ${runtime.greetingCap} 人（已完成 ${total} 人），强制切换沟通页`);
-          await runCommand('cmd_stop_greeting').catch(() => {});
-          await persist();
-          return;
-        }
-      }
       if (data.state === 'idle') {
         if (RISK_PATTERN.test(data.statusText || '')) await pauseForManual(data.statusText, 'greeting');
-        else if (GREETING_COMPLETE_PATTERN.test(data.statusText || '') ||
-                 (runtime.greetingCap > 0 && runtime.greetingCumulative + runtime.greetingHighWaterMark >= runtime.greetingCap)) {
+        else if (GREETING_COMPLETE_PATTERN.test(data.statusText || '') || runtime.capStopPending) {
+          runtime.capStopPending = false;
+          if (runtime.greetingRoundCount > 0) {
+            runtime.consecutiveEmptyRounds = 0;
+          } else {
+            runtime.consecutiveEmptyRounds += 1;
+            if (runtime.consecutiveEmptyRounds >= EMPTY_ROUND_LIMIT) {
+              runtime.finalListen = true;
+              await log(`推荐列表连续 ${EMPTY_ROUND_LIMIT} 轮无新候选人，进入最后一次监听，结束后联动完成`, 'warn');
+            } else {
+              await log(`本轮打招呼 0 人（第 ${runtime.consecutiveEmptyRounds} 轮空轮），监听守尾量后再试`);
+            }
+          }
           await enterListeningStage();
         } else await pauseForManual(data.statusText || '打招呼任务意外停止', 'greeting');
       } else {
         await persist();
       }
+      return;
+    }
+    // 回复活动：真实送出话术（📤）才刷新活动时间；跳过类日志不算待办
+    if (message.action === 'running_log' && runtime.stage === 'listening' && data.taskType === 'reply') {
+      if (REPLY_ACTIVITY_PATTERN.test(data.message || '')) {
+        runtime.lastActivityAt = Date.now();
+        await persist();
+      }
+      return;
     }
     if (message.action === 'status_report' && runtime.stage === 'listening') {
       runtime.moduleStates.reply = data.state || runtime.moduleStates.reply;
       if (data.state === 'idle' && RISK_PATTERN.test(data.statusText || '')) {
         await pauseForManual(data.statusText, 'listening');
       } else if (data.state === 'idle' && runtime.config?.modules?.reply) {
+        // 一轮回复结束：本零活动（无送出、采集统计无增长、未持锁）则累计空轮，否则清零
+        if (!runtime.resumeLock && runtime.config?.modules?.greeting && runtime.lastActivityAt <= runtime.passStartedAt) {
+          runtime.consecutiveEmptyPasses += 1;
+        } else {
+          runtime.consecutiveEmptyPasses = 0;
+        }
+        if (runtime.consecutiveEmptyPasses >= EARLY_RETURN_EMPTY_PASSES) {
+          if (runtime.finalListen) {
+            await finish('连续多轮无新候选人，联动已结束');
+          } else {
+            await log('连续无回复、无新简历，提前返回推荐页打下一轮');
+            await enterGreetingStage();
+          }
+          return;
+        }
         await persist();
         if (!runtime.resumeLock) {
           await chrome.alarms.create(REPLY_RESTART_ALARM, {
@@ -453,18 +545,30 @@ export function createWorkflowOrchestrator({
           await log(`自动回复本轮已结束，将在 ${runtime.config.scanIntervalSeconds} 秒后继续监听`);
         }
       } else await persist();
+      return;
     }
     if (message.action === 'rc_status_update' && ['listening', 'switching_to_chat'].includes(runtime.stage)) {
       runtime.moduleStates.resume = data.state || runtime.moduleStates.resume;
+      // 采集活动：stats 累计值增长即视为有活
+      const stats = data.stats || {};
+      const statSum = (stats.collected || 0) + (stats.saved || 0) + (stats.updated || 0) + (stats.replied || 0);
+      if (statSum > runtime.lastResumeStatSum) {
+        runtime.lastResumeStatSum = statSum;
+        runtime.lastActivityAt = Date.now();
+      }
       if (data.state === 'paused') await pauseForManual(data.statusText || '简历采集需要人工处理', 'listening');
-      else if (data.state === 'idle' && LISTEN_COMPLETE_PATTERN.test(data.statusText || '')) await finish('协调监听窗口已完成');
+      else if (data.state === 'idle' && LISTEN_COMPLETE_PATTERN.test(data.statusText || '')) {
+        if (runtime.config?.modules?.greeting && !runtime.finalListen) await enterGreetingStage();
+        else await finish('协调监听窗口已完成');
+      }
       else if (data.state === 'idle') await pauseForManual(data.statusText || '简历采集意外停止', 'listening');
       else await persist();
+      return;
     }
   }
 
   chrome.runtime.onMessage.addListener(message => {
-    if (['greeting_status_report', 'status_report', 'rc_status_update'].includes(message?.action)) {
+    if (['greeting_status_report', 'status_report', 'rc_status_update', 'running_log', 'new_greeting_record'].includes(message?.action)) {
       observeMessage(message).catch(err => console.error('[Workflow] 状态处理失败:', err));
     }
     return false;
@@ -473,7 +577,11 @@ export function createWorkflowOrchestrator({
   chrome.alarms.onAlarm.addListener(alarm => {
     if (alarm.name === DEADLINE_ALARM) {
       ready.then(() => {
-        if (runtime.state === 'running' && runtime.stage === 'listening') return finish('协调监听窗口已完成');
+        if (runtime.state !== 'running' || runtime.stage !== 'listening') return;
+        // 单次监听安全上限到点：有打招呼模块则回打下一轮，否则维持原收尾语义
+        if (!runtime.config?.modules?.greeting) return finish('协调监听窗口已完成');
+        if (runtime.finalListen) return finish('连续多轮无新候选人，联动已结束');
+        return enterGreetingStage();
       }).catch(err => console.error('[Workflow] 截止时间处理失败:', err));
     }
     if (alarm.name === REPLY_RESTART_ALARM) {
@@ -484,7 +592,7 @@ export function createWorkflowOrchestrator({
         await ensureChatPage();
         await runCommand('cmd_start');
         runtime.moduleStates.reply = 'running';
-        await update({ statusText: '自动回复与简历采集协调运行中' });
+        await update({ passStartedAt: Date.now(), statusText: '自动回复与简历采集协调运行中' });
         await log('💬 自动回复已进入下一轮监听');
       }).catch(err => pauseForManual(err.message, 'listening'));
     }

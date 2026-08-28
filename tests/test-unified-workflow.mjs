@@ -78,6 +78,8 @@ const orchestrator = createWorkflowOrchestrator({
 const h = orchestrator.handlers;
 const tick = () => new Promise(resolve => setTimeout(resolve, 20));
 const waitForRestart = () => new Promise(resolve => setTimeout(resolve, 900));
+// ensureChatPage 在页面加载完成后固定等待 2.5s（编排器内建），消息触发的切监听必须等够
+const waitForTransition = () => new Promise(resolve => setTimeout(resolve, 3500));
 const approve = () => {
   const now = new Date().toISOString();
   store.unifiedWorkflowApproval = { approvedAt: now, privacyVersion: '2026-07-29' };
@@ -148,6 +150,160 @@ assert.equal(status.stage, 'completed');
 assert.equal(status.state, 'idle');
 assert.ok(!calls.includes('cmd_start'));
 
+// ── 循环模式（2026-08-28 拍板：打 N 个 ⇄ 监听回复，空转即回打）─────────────
+const replyPassIdle = async () => {
+  for (const listener of runtimeListeners) {
+    listener({ action: 'status_report', data: { state: 'idle', statusText: '所有岗位已按顺序处理完成' } });
+  }
+  await waitForRestart();
+};
+const fireRestartAlarm = async () => {
+  for (const listener of alarmListeners) listener({ name: 'unified-workflow-reply-restart' });
+  await waitForRestart();
+};
+const greetingRoundDone = async (text = '所有岗位已按顺序处理完成') => {
+  for (const listener of runtimeListeners) {
+    listener({ action: 'greeting_status_report', data: { state: 'idle', statusText: text } });
+  }
+  await waitForTransition();
+};
+
+// 三开 + 每轮上限 2：打满即强停切监听；监听安全上限到点回打第二轮
+approve();
+calls.length = 0;
+tab = { ...tab, url: 'https://www.zhipin.com/web/geek/recommend' };
+status = await h.cmd_start_unified_workflow({
+  modules: { greeting: true, reply: true, resume: true },
+  listenDurationMinutes: 120,
+  scanIntervalSeconds: 60,
+  greetingCap: 2,
+});
+assert.equal(status.stage, 'greeting');
+assert.equal(status.cycleCount, 1);
+for (const listener of runtimeListeners) {
+  listener({ action: 'new_greeting_record', data: { name: '候选人甲' } });
+  listener({ action: 'new_greeting_record', data: { name: '候选人乙' } });
+}
+await tick();
+assert.ok(calls.includes('cmd_stop_greeting'), '打满每轮上限应强停打招呼');
+// 强停后引擎报"已停止"（不匹配完成文案），仍须按 capStopPending 切监听
+await greetingRoundDone('已停止');
+status = await h.cmd_get_unified_workflow_status();
+assert.equal(status.stage, 'listening');
+assert.ok(calls.includes('cmd_start'));
+// 监听安全上限到点 → 回打招呼第二轮（旧语义是 finish，已废弃）
+for (const listener of alarmListeners) listener({ name: 'unified-workflow-deadline' });
+await waitForRestart();
+status = await h.cmd_get_unified_workflow_status();
+assert.equal(status.stage, 'greeting');
+assert.equal(status.cycleCount, 2);
+assert.ok(calls.filter(item => item === 'cmd_start_greeting').length >= 2);
+assert.ok(calls.includes('cmd_stop'));
+assert.ok(calls.includes('stopResumeCollector'));
+
+// 第二轮 0 人（无新记录）→ 空轮 1；连续 2 个零活动回复轮 → 提前回打第三轮
+await greetingRoundDone();
+status = await h.cmd_get_unified_workflow_status();
+assert.equal(status.stage, 'listening');
+assert.equal(status.consecutiveEmptyRounds, 1);
+await replyPassIdle();
+assert.ok(alarms.has('unified-workflow-reply-restart'), '第 1 个空轮应只排重启闹钟');
+status = await h.cmd_get_unified_workflow_status();
+assert.equal(status.stage, 'listening');
+await fireRestartAlarm();
+await replyPassIdle();
+status = await h.cmd_get_unified_workflow_status();
+assert.equal(status.stage, 'greeting');
+assert.equal(status.cycleCount, 3);
+
+// 第三轮 0 人 → 空轮 2 → 空转回打第四轮；第四轮 0 人 → 空轮 3 → 最后一次监听
+await greetingRoundDone();
+status = await h.cmd_get_unified_workflow_status();
+assert.equal(status.consecutiveEmptyRounds, 2);
+await replyPassIdle();
+await fireRestartAlarm();
+await replyPassIdle();
+status = await h.cmd_get_unified_workflow_status();
+assert.equal(status.stage, 'greeting');
+await greetingRoundDone();
+status = await h.cmd_get_unified_workflow_status();
+assert.equal(status.stage, 'listening');
+assert.equal(status.consecutiveEmptyRounds, 3);
+assert.equal(status.finalListen, true);
+// 最后一次监听空转结束 → finish（不再回打）
+await replyPassIdle();
+await fireRestartAlarm();
+await replyPassIdle();
+status = await h.cmd_get_unified_workflow_status();
+assert.equal(status.stage, 'completed');
+assert.equal(status.state, 'idle');
+
+// 回复活动（📤）与采集统计增长都能抑制空转回打
+approve();
+calls.length = 0;
+status = await h.cmd_start_unified_workflow({
+  modules: { greeting: true, reply: true, resume: true },
+  listenDurationMinutes: 120,
+  scanIntervalSeconds: 60,
+  greetingCap: 0,
+});
+for (const listener of runtimeListeners) {
+  listener({ action: 'new_greeting_record', data: { name: '候选人丙' } });
+}
+await tick();
+await greetingRoundDone();
+status = await h.cmd_get_unified_workflow_status();
+assert.equal(status.stage, 'listening');
+for (const listener of runtimeListeners) {
+  listener({ action: 'running_log', data: { taskType: 'reply', level: 'info', message: '📤 自动回复 → 候选人丙：岗位「Java」1 条话术', time: Date.now() } });
+  listener({ action: 'rc_status_update', data: { state: 'running', statusText: '运行中', stats: { collected: 1, saved: 1, updated: 0, skipped: 0, replied: 0 } } });
+}
+await tick();
+await replyPassIdle();
+status = await h.cmd_get_unified_workflow_status();
+assert.equal(status.stage, 'listening', '有回复/采集活动不得回打');
+assert.equal(status.consecutiveEmptyPasses, 0);
+assert.ok(alarms.has('unified-workflow-reply-restart'), '有活动时应正常排重启闹钟');
+await h.cmd_stop_unified_workflow();
+
+// P1：暂停等待人工处理的时间不计入监听窗口（deadline 顺延）
+approve();
+calls.length = 0;
+status = await h.cmd_start_unified_workflow({
+  modules: { greeting: false, reply: true, resume: true },
+  listenDurationMinutes: 120,
+  scanIntervalSeconds: 60,
+});
+const deadlineBefore = status.deadlineAt;
+for (const listener of runtimeListeners) {
+  listener({ action: 'status_report', data: { state: 'idle', statusText: '操作频繁，请稍后再试' } });
+}
+await tick();
+status = await h.cmd_get_unified_workflow_status();
+assert.equal(status.state, 'paused');
+assert.ok(status.pausedAt > 0);
+await new Promise(resolve => setTimeout(resolve, 120));
+approve();
+status = await h.cmd_resume_unified_workflow();
+assert.equal(status.state, 'running');
+assert.equal(status.pausedAt, 0);
+assert.ok(status.deadlineAt >= deadlineBefore + 100, `deadline 应按暂停时长顺延（实际差 ${status.deadlineAt - deadlineBefore}ms）`);
+await h.cmd_stop_unified_workflow();
+
+// 无打招呼模块：监听上限到点维持原 finish 语义
+approve();
+calls.length = 0;
+status = await h.cmd_start_unified_workflow({
+  modules: { greeting: false, reply: true, resume: true },
+  listenDurationMinutes: 120,
+  scanIntervalSeconds: 60,
+});
+for (const listener of alarmListeners) listener({ name: 'unified-workflow-deadline' });
+await waitForRestart();
+status = await h.cmd_get_unified_workflow_status();
+assert.equal(status.stage, 'completed');
+
+
 // 永久跳过记录必须支持人工恢复。
 store.resumeCollectFailures = {
   candidate_1: { candidateKey: 'candidate_1', name: '候选人A', attempts: 3, permanent: true, updatedAt: Date.now() },
@@ -194,4 +350,4 @@ assert.equal(resumeTuned[1].actionDelaySeconds, 6);
 assert.equal(resumeTuned[1].autoSendReply, true);
 await h.cmd_stop_unified_workflow();
 
-console.log('✅ 三模块开关、固定流水线、采集优先锁、持续监听、永久跳过与人工恢复全部通过');
+console.log('✅ 三模块开关、循环编排（每轮计数/空转回打/空轮收尾）、采集优先锁、暂停顺延、永久跳过与人工恢复全部通过');

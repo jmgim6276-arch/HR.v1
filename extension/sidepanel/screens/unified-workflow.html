@@ -127,17 +127,17 @@
           </div>
         </div>
       </div>
-      <div class="flow"><span>推荐牛人筛选并打招呼</span><b>→</b><span>自动切换沟通页</span><b>→</b><span>自动回复＋简历采集协调监听</span></div>
+      <div class="flow"><span>打招呼（每轮 N 人）</span><b>⇄</b><span>沟通页监听回复＋采集，循环往复直到手动停止</span></div>
     </section>
 
     <section class="panel settings">
-      <label class="field">打招呼编排上限（人）
+      <label class="field">每轮打招呼人数（人）
         <input id="greetingCap" type="number" min="0" max="500" value="0">
-        <span class="hint">填 0 = 等全部岗位跑完再切换；填 N = 打完 N 人立即切到沟通页启动回复+采集。</span>
+        <span class="hint">填 N = 每轮打满 N 人后切到沟通页监听回复；填 0 = 每轮打到列表自然结束。监听中无回复、无新简历时会自动回来打下一轮。</span>
       </label>
-      <label class="field">协调监听时长（分钟）
+      <label class="field">单次监听上限（分钟）
         <input id="listenDuration" type="number" min="1" max="240" value="120">
-        <span class="hint">默认 120 分钟，暂停等待人工处理的时间不计入监听窗口。</span>
+        <span class="hint">单次监听的安全上限，默认 120 分钟；连续约 2 个扫描周期无回复、无新简历会提前回到打招呼。暂停等待人工处理的时间不计入。</span>
       </label>
       <label class="field">简历扫描间隔（秒）
         <input id="scanInterval" type="number" min="15" max="300" value="60">

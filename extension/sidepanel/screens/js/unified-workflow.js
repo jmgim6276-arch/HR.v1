@@ -88,15 +88,15 @@
     const modules = [
       config.modules.greeting ? (
         config.greetingCap > 0
-          ? `打招呼：开启（${greetingJobs.length} 个岗位，编排上限 ${config.greetingCap} 人，达上限后自动切换沟通页）`
-          : `打招呼：开启（${greetingJobs.length} 个岗位，计划上限 ${greetingTarget || '按岗位配置'} 人）`
+          ? `打招呼：开启（${greetingJobs.length} 个岗位，每轮 ${config.greetingCap} 人，打满后切沟通页监听，再循环）`
+          : `打招呼：开启（${greetingJobs.length} 个岗位，每轮打到列表自然结束，计划上限 ${greetingTarget || '按岗位配置'} 人）`
       ) : '打招呼：关闭',
       config.modules.reply ? `自动回复：开启（${replyConfigs.length ? replyConfigs.map(item => item.name).filter(Boolean).join('、') : '全部已发布岗位'}）` : '自动回复：关闭',
       config.modules.resume ? '简历采集：开启（监听全部有效简历请求，失败三次永久跳过）' : '简历采集：关闭',
     ];
     const approved = window.confirm([
       '启动前请确认本次三模块联动范围', '', ...modules, '',
-      `协调监听：${config.listenDurationMinutes} 分钟，每 ${config.scanIntervalSeconds} 秒扫描一次。`,
+      `循环模式：打招呼 ⇄ 监听往复；监听单次上限 ${config.listenDurationMinutes} 分钟，每 ${config.scanIntervalSeconds} 秒扫描一次，无回复、无新简历会提前回到打招呼。`,
       '简历采集拥有页面操作优先级，期间自动回复消息进入队列。',
       '出现安全验证、操作频繁、登录失效或页面异常时将全局暂停。', '',
       '确认后将按上述范围自动运行，无需逐条确认。是否启动？',

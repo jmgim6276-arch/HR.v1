@@ -10036,6 +10036,12 @@ async function Gc(s) {
     "[SW] [\u8C03\u5EA6\u5668] ===== \u81EA\u52A8\u542F\u52A8\u56DE\u8C03\u5F00\u59CB =====",
     s.name,
   );
+  // \u4E00\u952E\u8054\u52A8\uFF08\u7F16\u6392\u5FAA\u73AF\uFF09\u8FD0\u884C\u671F\u95F4\uFF0C\u672C\u8C03\u5EA6\u5668\u6302\u8D77\uFF0C\u907F\u514D\u62A2\u6807\u7B7E\u9875
+  const __wfStart = await unifiedWorkflow.handlers["cmd_get_unified_workflow_status"]().catch(() => null);
+  if (__wfStart && __wfStart.state && __wfStart.state !== "idle") {
+    console.log("[SW] [\u8C03\u5EA6\u5668] \u4E00\u952E\u8054\u52A8\u8FD0\u884C\u4E2D\uFF08state=" + __wfStart.state + "\uFF09\uFF0C\u8DF3\u8FC7\u672C\u6B21\u5B9A\u65F6\u542F\u52A8");
+    return;
+  }
   if (!(await hasCurrentPrivacyConsent())) {
     console.warn(
       "[SW] [\u8C03\u5EA6\u5668] \u672A\u786E\u8BA4\u6700\u65B0\u9690\u79C1\u653F\u7B56\uFF0C\u8DF3\u8FC7\u81EA\u52A8\u542F\u52A8",
@@ -10239,6 +10245,12 @@ async function Fc() {
   console.log(
     "[SW] [\u8C03\u5EA6\u5668] ===== \u81EA\u52A8\u505C\u6B62\u56DE\u8C03\u5F00\u59CB =====",
   );
+  // \u4E00\u952E\u8054\u52A8\uFF08\u7F16\u6392\u5FAA\u73AF\uFF09\u8FD0\u884C\u671F\u95F4\uFF0C\u672C\u8C03\u5EA6\u5668\u6302\u8D77\uFF0C\u907F\u514D\u8BEF\u505C\u7F16\u6392\u4E2D\u7684\u6A21\u5757
+  const __wfStop = await unifiedWorkflow.handlers["cmd_get_unified_workflow_status"]().catch(() => null);
+  if (__wfStop && __wfStop.state && __wfStop.state !== "idle") {
+    console.log("[SW] [\u8C03\u5EA6\u5668] \u4E00\u952E\u8054\u52A8\u8FD0\u884C\u4E2D\uFF08state=" + __wfStop.state + "\uFF09\uFF0C\u8DF3\u8FC7\u672C\u6B21\u5B9A\u65F6\u505C\u6B62");
+    return;
+  }
   let s = await K().catch(() => null);
   if (
     (console.log(
@@ -10329,6 +10341,12 @@ async function Wc(s) {
     "[SW] [\u6253\u62DB\u547C\u8C03\u5EA6\u5668] ===== \u81EA\u52A8\u542F\u52A8\u56DE\u8C03\u5F00\u59CB =====",
     s.name,
   );
+  // \u4E00\u952E\u8054\u52A8\uFF08\u7F16\u6392\u5FAA\u73AF\uFF09\u8FD0\u884C\u671F\u95F4\uFF0C\u672C\u8C03\u5EA6\u5668\u6302\u8D77\uFF0C\u907F\u514D\u62A2\u6807\u7B7E\u9875
+  const __wfStart = await unifiedWorkflow.handlers["cmd_get_unified_workflow_status"]().catch(() => null);
+  if (__wfStart && __wfStart.state && __wfStart.state !== "idle") {
+    console.log("[SW] [\u6253\u62DB\u547C\u8C03\u5EA6\u5668] \u4E00\u952E\u8054\u52A8\u8FD0\u884C\u4E2D\uFF08state=" + __wfStart.state + "\uFF09\uFF0C\u8DF3\u8FC7\u672C\u6B21\u5B9A\u65F6\u542F\u52A8");
+    return;
+  }
   if (!(await hasCurrentPrivacyConsent())) {
     console.warn(
       "[SW] [\u6253\u62DB\u547C\u8C03\u5EA6\u5668] \u672A\u786E\u8BA4\u6700\u65B0\u9690\u79C1\u653F\u7B56\uFF0C\u8DF3\u8FC7\u81EA\u52A8\u542F\u52A8",
@@ -10508,6 +10526,12 @@ async function jc() {
   console.log(
     "[SW] [\u6253\u62DB\u547C\u8C03\u5EA6\u5668] ===== \u81EA\u52A8\u505C\u6B62\u56DE\u8C03\u5F00\u59CB =====",
   );
+  // \u4E00\u952E\u8054\u52A8\uFF08\u7F16\u6392\u5FAA\u73AF\uFF09\u8FD0\u884C\u671F\u95F4\uFF0C\u672C\u8C03\u5EA6\u5668\u6302\u8D77\uFF0C\u907F\u514D\u8BEF\u505C\u7F16\u6392\u4E2D\u7684\u6A21\u5757
+  const __wfStop = await unifiedWorkflow.handlers["cmd_get_unified_workflow_status"]().catch(() => null);
+  if (__wfStop && __wfStop.state && __wfStop.state !== "idle") {
+    console.log("[SW] [\u6253\u62DB\u547C\u8C03\u5EA6\u5668] \u4E00\u952E\u8054\u52A8\u8FD0\u884C\u4E2D\uFF08state=" + __wfStop.state + "\uFF09\uFF0C\u8DF3\u8FC7\u672C\u6B21\u5B9A\u65F6\u505C\u6B62");
+    return;
+  }
   let s = await K().catch(() => null);
   if (
     (console.log(
