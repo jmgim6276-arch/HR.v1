@@ -33,6 +33,7 @@
       },
       listenDurationMinutes: Math.min(240, Math.max(1, Number($('listenDuration').value) || 120)),
       scanIntervalSeconds: Math.min(300, Math.max(15, Number($('scanInterval').value) || 60)),
+      greetingCap: Math.min(500, Math.max(0, Number($('greetingCap').value) || 0)),
       // 简历采集调参（合并自原简历采集控制台）
       maxPerRun: Math.min(200, Math.max(1, Number($('rcMaxPerRun').value) || 100)),
       intervalSeconds: Math.min(300, Math.max(60, Number($('rcInterval').value) || 60)),
@@ -56,6 +57,7 @@
       $('enableResume').checked = config.modules?.resume !== false;
       $('listenDuration').value = config.listenDurationMinutes || 120;
       $('scanInterval').value = config.scanIntervalSeconds || 60;
+      if (config.greetingCap != null) $('greetingCap').value = config.greetingCap;
       if (config.maxPerRun != null) $('rcMaxPerRun').value = config.maxPerRun;
       if (config.intervalSeconds != null) $('rcInterval').value = config.intervalSeconds;
       if (config.actionDelaySeconds != null) $('rcActionDelay').value = config.actionDelaySeconds;
@@ -84,7 +86,11 @@
     const greetingTarget = greetingJobs.reduce((sum, job) => sum + Math.max(0, Number(greetingByJob.get(job.id)?.greetCount) || 0), 0);
     const replyConfigs = (stored.replyPositionConfigs || []).filter(item => item.enabled !== false);
     const modules = [
-      config.modules.greeting ? `打招呼：开启（${greetingJobs.length} 个岗位，计划上限 ${greetingTarget || '按岗位配置'} 人）` : '打招呼：关闭',
+      config.modules.greeting ? (
+        config.greetingCap > 0
+          ? `打招呼：开启（${greetingJobs.length} 个岗位，编排上限 ${config.greetingCap} 人，达上限后自动切换沟通页）`
+          : `打招呼：开启（${greetingJobs.length} 个岗位，计划上限 ${greetingTarget || '按岗位配置'} 人）`
+      ) : '打招呼：关闭',
       config.modules.reply ? `自动回复：开启（${replyConfigs.length ? replyConfigs.map(item => item.name).filter(Boolean).join('、') : '全部已发布岗位'}）` : '自动回复：关闭',
       config.modules.resume ? '简历采集：开启（监听全部有效简历请求，失败三次永久跳过）' : '简历采集：关闭',
     ];

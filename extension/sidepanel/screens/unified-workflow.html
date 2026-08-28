@@ -131,6 +131,10 @@
     </section>
 
     <section class="panel settings">
+      <label class="field">打招呼编排上限（人）
+        <input id="greetingCap" type="number" min="0" max="500" value="0">
+        <span class="hint">填 0 = 等全部岗位跑完再切换；填 N = 打完 N 人立即切到沟通页启动回复+采集。</span>
+      </label>
       <label class="field">协调监听时长（分钟）
         <input id="listenDuration" type="number" min="1" max="240" value="120">
         <span class="hint">默认 120 分钟，暂停等待人工处理的时间不计入监听窗口。</span>

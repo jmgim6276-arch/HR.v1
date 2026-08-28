@@ -41,6 +41,9 @@ function defaultRuntime() {
     resumeLock: false,
     logs: [],
     moduleStates: { greeting: 'idle', reply: 'idle', resume: 'idle' },
+    greetingCumulative: 0,
+    greetingHighWaterMark: 0,
+    greetingCap: 0,
   };
 }
 
@@ -57,6 +60,7 @@ function normalizeConfig(input = {}) {
     modules,
     listenDurationMinutes: Math.min(240, Math.max(1, Number(input.listenDurationMinutes) || 120)),
     scanIntervalSeconds: Math.min(300, Math.max(15, Number(input.scanIntervalSeconds) || 60)),
+    greetingCap: Math.min(500, Math.max(0, Number(input.greetingCap) || 0)),
     // 简历采集调参（合并控制台后由一键运行采集折叠区提供；缺省保持原行为）
     intervalSeconds: Math.min(300, Math.max(60, Number(input.intervalSeconds) || 60)),
     actionDelaySeconds: Math.min(15, Math.max(4, Number(input.actionDelaySeconds) || 4)),
@@ -256,6 +260,9 @@ export function createWorkflowOrchestrator({
       config,
       startedAt: Date.now(),
       moduleStates: { greeting: 'idle', reply: 'idle', resume: 'idle' },
+      greetingCumulative: 0,
+      greetingHighWaterMark: 0,
+      greetingCap: config.greetingCap || 0,
     };
     await chrome.storage.local.set({ [CONFIG_KEY]: config, [RUNTIME_KEY]: runtime });
     emitStatus();
@@ -406,10 +413,29 @@ export function createWorkflowOrchestrator({
     const data = message.data;
     if (message.action === 'greeting_status_report' && runtime.stage === 'greeting') {
       runtime.moduleStates.greeting = data.state || runtime.moduleStates.greeting;
+      const progressMatch = (data.statusText || '').match(/打招呼进度\s+(\d+)\/(\d+)/);
+      if (progressMatch) {
+        const n = Number(progressMatch[1]);
+        if (n < runtime.greetingHighWaterMark) {
+          runtime.greetingCumulative += runtime.greetingHighWaterMark;
+          runtime.greetingHighWaterMark = n;
+        } else {
+          runtime.greetingHighWaterMark = n;
+        }
+        const total = runtime.greetingCumulative + runtime.greetingHighWaterMark;
+        if (runtime.greetingCap > 0 && total >= runtime.greetingCap && data.state === 'running') {
+          await log(`🛑 打招呼已达编排上限 ${runtime.greetingCap} 人（已完成 ${total} 人），强制切换沟通页`);
+          await runCommand('cmd_stop_greeting').catch(() => {});
+          await persist();
+          return;
+        }
+      }
       if (data.state === 'idle') {
         if (RISK_PATTERN.test(data.statusText || '')) await pauseForManual(data.statusText, 'greeting');
-        else if (GREETING_COMPLETE_PATTERN.test(data.statusText || '')) await enterListeningStage();
-        else await pauseForManual(data.statusText || '打招呼任务意外停止', 'greeting');
+        else if (GREETING_COMPLETE_PATTERN.test(data.statusText || '') ||
+                 (runtime.greetingCap > 0 && runtime.greetingCumulative + runtime.greetingHighWaterMark >= runtime.greetingCap)) {
+          await enterListeningStage();
+        } else await pauseForManual(data.statusText || '打招呼任务意外停止', 'greeting');
       } else {
         await persist();
       }
