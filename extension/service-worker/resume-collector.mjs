@@ -89,11 +89,97 @@ async function requireCollectorSubscriptionOnline() {
   return profile;
 }
 
+/**
+ * 托管大模型调用：authed POST 到后端（密钥只在服务器，插件仅用登录态 token）。
+ * 与 requireCollectorSubscriptionOnline 共用 token 刷新（__kxzpRefreshPromise 去重）。
+ * 失败抛带 status/code 的 Error；402 / BILLING_INSUFFICIENT_BALANCE 即「断粮」。
+ */
+async function collectorApiPost(path, body) {
+  const stored = await chrome.storage.local.get([AUTH_KEY, INSTALLATION_ID_KEY]);
+  const auth = stored[AUTH_KEY] || {};
+  const deviceId = stored[INSTALLATION_ID_KEY];
+  if (!auth.accessToken || !deviceId) {
+    const err = new Error('请先登录个人中心');
+    err.code = 'NOT_LOGGED_IN';
+    throw err;
+  }
+  const doPost = token => fetch(`${AUTH_API_BASE}${path}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      'X-Device-Id': deviceId,
+    },
+    body: JSON.stringify(body || {}),
+  });
+  let response;
+  try {
+    response = await doPost(auth.accessToken);
+  } catch (_) {
+    const err = new Error('网络异常，无法连接托管大模型服务');
+    err.code = 'LLM_NETWORK';
+    throw err;
+  }
+  // 401 token 过期 → 刷新后重试一次（与订阅校验同模式）
+  if (response.status === 401) {
+    const failure = await response.json().catch(() => ({}));
+    if (failure.code === 'TOKEN_EXPIRED' && auth.refreshToken) {
+      try {
+        globalThis.__kxzpRefreshPromise ||= fetch(`${AUTH_API_BASE}/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Device-Id': deviceId },
+          body: JSON.stringify({ refresh_token: auth.refreshToken, device_id: deviceId }),
+        })
+          .then(async result => {
+            if (!result.ok) {
+              const f = await result.json().catch(() => ({}));
+              const err = new Error(f.detail || '登录会话已失效');
+              err.code = f.code || '';
+              throw err;
+            }
+            return result.json();
+          })
+          .finally(() => { globalThis.__kxzpRefreshPromise = null; });
+        const refreshed = await globalThis.__kxzpRefreshPromise;
+        auth.accessToken = refreshed.access_token;
+        auth.refreshToken = refreshed.refresh_token || auth.refreshToken;
+        auth.sessionId = refreshed.session?.id || auth.sessionId || '';
+        await chrome.storage.local.set({ [AUTH_KEY]: auth });
+        response = await doPost(auth.accessToken);
+      } catch (refreshErr) {
+        const err = new Error(refreshErr.message || '登录已过期，请重新登录');
+        err.code = refreshErr.code || 'SESSION_EXPIRED';
+        throw err;
+      }
+    }
+  }
+  if (!response.ok) {
+    const failure = await response.json().catch(() => ({}));
+    const err = new Error(failure.detail || failure.message || `请求失败（HTTP ${response.status}）`);
+    err.status = response.status;
+    err.code = failure.code || '';
+    throw err;
+  }
+  return response.json();
+}
+
+function isBillingBlockError(err) {
+  return Boolean(err) && (err.code === 'BILLING_INSUFFICIENT_BALANCE' || err.status === 402);
+}
+
+// 断粮强提示（面板内）：节流 60s，避免批量 402 时刷屏运行日志。
+let lastBillingWarnAt = 0;
+function warnBillingBlocked(context) {
+  const now = Date.now();
+  if (now - lastBillingWarnAt < 60 * 1000) return;
+  lastBillingWarnAt = now;
+  broadcastLog(`⚠️ 点数不足，${context}已暂停；请到「大模型（托管）」页充值后继续使用`, 'warn');
+}
+
 const TASK_TYPE = 'resumeCollect';
 const TALENT_KEY = 'talentPool';
 const CONFIG_KEY = 'resumeCollectConfig';
 const REPLY_CONFIG_KEY = 'resumeReplyConfig';
-const MODEL_CONFIG_KEY = 'modelConfig';
 const sidePanelPorts = new Set();
 let activeTabId = null;
 let lastStatus = { state: 'idle', statusText: '等待启动', stats: { collected: 0, saved: 0, updated: 0, skipped: 0, replied: 0 } };
@@ -198,15 +284,7 @@ function parseJsonObject(text) {
   return JSON.parse(value);
 }
 
-function normalizeChatUrl(apiUrl) {
-  const base = String(apiUrl || '').replace(/\/+$/, '');
-  if (base.endsWith('/chat/completions')) return base;
-  if (/api\.openai\.com$/i.test(base)) return `${base}/v1/chat/completions`;
-  return `${base}/chat/completions`;
-}
-
-async function extractWithModel(rawText, config) {
-  if (!config?.apiUrl || !config?.apiKey || !config?.model) return null;
+async function extractWithModel(rawText) {
   const prompt = [
     '你是招聘简历信息整理器。输入文本来自不同版式的简历，顺序可能有少量错乱。',
     '只整理明确出现的信息，禁止猜测。严格只输出 JSON：',
@@ -214,29 +292,22 @@ async function extractWithModel(rawText, config) {
     'age 必须是数字或 null；note 最多 80 个汉字，概括求职方向与核心经历。',
     '联系方式已由本地规则处理，不要输出电话或邮箱。',
   ].join('\n');
-  const response = await fetch(normalizeChatUrl(config.apiUrl), {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${config.apiKey}`,
-    },
-    body: JSON.stringify({
-      model: config.model,
-      temperature: 0.1,
-      stream: false,
-      max_tokens: 600,
+  try {
+    // /llm/chat 为透传（服务端不脱敏），故沿用本地 maskContacts 后再上送。
+    const json = await collectorApiPost('/llm/chat', {
+      scene: 'collect_extract',
       messages: [
         { role: 'system', content: prompt },
         { role: 'user', content: maskContacts(rawText).slice(0, 16000) },
       ],
-    }),
-  });
-  if (!response.ok) {
-    const body = await response.text().catch(() => '');
-    throw new Error(`LLM HTTP ${response.status}: ${body.slice(0, 160)}`);
+      max_tokens: 600,
+      temperature: 0.1,
+    });
+    return parseJsonObject(json?.content || '');
+  } catch (err) {
+    if (isBillingBlockError(err)) return null; // 断粮 → 回落本地提取，采集继续
+    throw err;
   }
-  const json = await response.json();
-  return parseJsonObject(json?.choices?.[0]?.message?.content || '');
 }
 
 function mergeFields(localFields, modelFields, meta) {
@@ -259,52 +330,45 @@ function mergeFields(localFields, modelFields, meta) {
 /* ─── 入库即自动打分（决策：VIP 用户；用 resumeRaw + 该岗位 JD 调大模型；失败不阻塞采集） ─── */
 const JD_KEY = 'jobDescriptions';
 
-function buildScorePrompt(jd) {
-  return [
-    '你是资深招聘专家。下面是从简历页面抓取的候选人文本，顺序可能错乱、有碎片，',
-    '请先重排、结构化，再依据岗位要求打分。',
-    '',
-    '【岗位要求 / JD】',
-    jd || '（未提供，按通用标准评估）',
-    '',
-    '严格只输出 JSON，不要多余文字、不要代码块包裹：',
-    '{"overall":<0-100整数>,"recommendation":"强烈推荐|推荐|一般|不推荐","summary":"两三句总评"}',
-  ].join('\n');
+async function scoreWithModel(resumeText, jobDescription) {
+  // 提示词 + 脱敏在服务端 /llm/score-resume（detail=brief 简版省 token）；插件只传原文。
+  const json = await collectorApiPost('/llm/score-resume', {
+    jd_text: jobDescription || '',
+    resume_text: resumeText,
+    detail: 'brief',
+  });
+  return json?.result || null;
 }
 
-async function scoreWithModel(resumeText, jobDescription, config) {
-  if (!config?.apiUrl || !config?.apiKey || !config?.model) return null;
-  const response = await fetch(normalizeChatUrl(config.apiUrl), {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${config.apiKey}`,
-    },
-    body: JSON.stringify({
-      model: config.model,
-      temperature: 0.2,
-      stream: false,
-      max_tokens: 500,
-      messages: [
-        { role: 'system', content: buildScorePrompt(jobDescription) },
-        { role: 'user', content: maskContacts(resumeText).slice(0, 16000) },
-      ],
-    }),
-  });
-  if (!response.ok) throw new Error(`LLM HTTP ${response.status}`);
-  const json = await response.json();
-  return parseJsonObject(json?.choices?.[0]?.message?.content || '');
+async function markTalentScorePending(talentId) {
+  try {
+    const pool = await chrome.storage.local.get(TALENT_KEY);
+    const talents = Array.isArray(pool[TALENT_KEY]) ? pool[TALENT_KEY] : [];
+    const idx = talents.findIndex((t) => t.id === talentId);
+    if (idx === -1) return;
+    talents[idx] = { ...talents[idx], scorePending: true };
+    await chrome.storage.local.set({ [TALENT_KEY]: talents });
+    broadcast('talent-pool-updated', { id: talentId });
+  } catch (_) {}
 }
 
 async function autoScoreTalent(talent) {
   try {
     if (!talent || !talent.id || !talent.resumeRaw || talent.resumeRaw.length < 20) return;
-    const stored = await chrome.storage.local.get([MODEL_CONFIG_KEY, JD_KEY]);
-    const config = stored[MODEL_CONFIG_KEY] || {};
-    if (!config.apiUrl || !config.apiKey || !config.model) return; // 未配置大模型则跳过
+    const stored = await chrome.storage.local.get(JD_KEY);
     const jdMap = stored[JD_KEY] || {};
     const jd = jdMap[String(talent.position || '').trim()]?.jd || '';
-    const result = await scoreWithModel(talent.resumeRaw, jd, config);
+    let result;
+    try {
+      result = await scoreWithModel(talent.resumeRaw, jd);
+    } catch (err) {
+      if (isBillingBlockError(err)) {
+        await markTalentScorePending(talent.id); // 断粮 → 标「待打分」，充值后补打
+        warnBillingBlocked('简历打分');
+        return;
+      }
+      throw err;
+    }
     const overall = Number(result && result.overall);
     if (!Number.isFinite(overall)) return;
     const pool = await chrome.storage.local.get(TALENT_KEY);
@@ -316,6 +380,7 @@ async function autoScoreTalent(talent) {
       score: Math.max(0, Math.min(100, overall)),
       scoreRecommendation: String(result.recommendation || ''),
       scoreSummary: String(result.summary || ''),
+      scorePending: false,
       scoredAt: Date.now(),
     };
     await chrome.storage.local.set({ [TALENT_KEY]: talents });
@@ -323,6 +388,48 @@ async function autoScoreTalent(talent) {
   } catch (err) {
     broadcastLog(`自动打分失败（不影响入库）：${err.message}`, 'warn');
   }
+}
+
+/**
+ * 充值后补打：对所有 scorePending（断粮时标「待打分」）的人才重新打分。
+ * 供大模型页「补打」入口调用；仍断粮则停止并提示。
+ */
+async function rescorePendingTalents() {
+  const pool = await chrome.storage.local.get(TALENT_KEY);
+  const talents = Array.isArray(pool[TALENT_KEY]) ? pool[TALENT_KEY] : [];
+  const pending = talents.filter(t => t.scorePending && t.resumeRaw && t.resumeRaw.length >= 20);
+  if (!pending.length) return { ok: true, rescored: 0, remaining: 0 };
+  const stored = await chrome.storage.local.get(JD_KEY);
+  const jdMap = stored[JD_KEY] || {};
+  let rescored = 0;
+  for (const talent of pending) {
+    const jd = jdMap[String(talent.position || '').trim()]?.jd || '';
+    try {
+      const result = await scoreWithModel(talent.resumeRaw, jd);
+      const overall = Number(result && result.overall);
+      if (!Number.isFinite(overall)) continue;
+      const idx = talents.findIndex(t => t.id === talent.id);
+      if (idx === -1) continue;
+      talents[idx] = {
+        ...talents[idx],
+        score: Math.max(0, Math.min(100, overall)),
+        scoreRecommendation: String(result.recommendation || ''),
+        scoreSummary: String(result.summary || ''),
+        scorePending: false,
+        scoredAt: Date.now(),
+      };
+      rescored++;
+    } catch (err) {
+      if (isBillingBlockError(err)) {
+        warnBillingBlocked('简历补打');
+        break; // 仍断粮，停止批量补打
+      }
+    }
+  }
+  await chrome.storage.local.set({ [TALENT_KEY]: talents });
+  broadcast('talent-pool-updated', {});
+  const remaining = talents.filter(t => t.scorePending).length;
+  return { ok: true, rescored, remaining };
 }
 
 async function collectResumeText(tabId, fallbackText = '', extractionSessionId = '') {
@@ -427,10 +534,9 @@ async function handleExtraction(tabId, data = {}) {
       error: '预览窗口已打开，但未读取到可验证的简历正文或联系方式；可能是纯图片/PDF 插件渲染，本次未写入人才库',
     };
   }
-  const stored = await chrome.storage.local.get(MODEL_CONFIG_KEY);
   let modelFields = null;
   try {
-    modelFields = await extractWithModel(rawText, stored[MODEL_CONFIG_KEY] || {});
+    modelFields = await extractWithModel(rawText);
   } catch (err) {
     broadcastLog(`大模型结构化失败，已改用本地提取：${err.message}`, 'warn');
   }
@@ -593,41 +699,35 @@ function matchJobByRules(position, brief, configs) {
   return job;
 }
 
-async function judgeReplyWithLLM(lastText, jobName, modelConfig) {
-  const cfg = modelConfig || {};
-  if (!cfg.apiUrl || !cfg.apiKey || !cfg.model) return { shouldReply: true, reason: '大模型未配置，默认回复' };
+async function judgeReplyWithLLM(lastText, jobName) {
   const sys = '你是招聘助手消息分类器。判断候选人发来的最新消息是否属于"候选人主动打招呼/咨询，值得 HR 回复"。只输出 JSON：{"reply":true或false,"reason":"≤15字"}。判 false：HR 自己发的；候选人仅应答/确认（好的/谢谢/嗯/OK）；系统通知/广告；空或无意义。判 true：主动打招呼、自我介绍、询问岗位、表达兴趣、提出实质问题。';
   const usr = `岗位：${jobName || '未知'}\n候选人最新消息：${String(lastText || '').slice(0, 500)}`;
   try {
-    const response = await fetch(normalizeChatUrl(cfg.apiUrl), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.apiKey}` },
-      body: JSON.stringify({
-        model: cfg.model,
-        temperature: 0,
-        stream: false,
-        max_tokens: 120,
-        messages: [
-          { role: 'system', content: sys },
-          { role: 'user', content: usr },
-        ],
-      }),
+    // /llm/chat 透传（提示词留在插件自组）。
+    const json = await collectorApiPost('/llm/chat', {
+      scene: 'reply_judge',
+      messages: [
+        { role: 'system', content: sys },
+        { role: 'user', content: usr },
+      ],
+      max_tokens: 120,
+      temperature: 0,
     });
-    if (!response.ok) return { shouldReply: true, reason: '判断失败，默认回复' };
-    const json = await response.json();
-    const content = String(json?.choices?.[0]?.message?.content || '');
+    const content = String(json?.content || '');
     const mm = content.match(/\{[\s\S]*\}/);
     const obj = mm ? JSON.parse(mm[0]) : {};
     return { shouldReply: obj.reply !== false, reason: obj.reason || '' };
-  } catch (_) {
-    return { shouldReply: true, reason: '判断异常，默认回复' };
+  } catch (err) {
+    // 断粮 → 停回（shouldReply:false + billingBlock 标记）；其它失败维持原 fail-open。
+    if (isBillingBlockError(err)) return { shouldReply: false, billingBlock: true, reason: '点数不足，请充值' };
+    return { shouldReply: true, reason: '判断失败，默认回复' };
   }
 }
 
 async function handleJudgeUnreadReply(data = {}) {
   const uid = String(data.uid || '');
   if (!uid) return { action: 'skip', reason: '缺少 uid' };
-  const stored = await chrome.storage.local.get([GREETING_CONFIGS_KEY, REPLY_IDEM_KEY, MODEL_CONFIG_KEY]);
+  const stored = await chrome.storage.local.get([GREETING_CONFIGS_KEY, REPLY_IDEM_KEY]);
   const locks = stored[REPLY_IDEM_KEY] || {};
   const last = Number(locks[uid] || 0);
   if (last && Date.now() - last < REPLY_IDEM_WINDOW_MS) {
@@ -639,8 +739,9 @@ async function handleJudgeUnreadReply(data = {}) {
     .map(item => String(item || '').trim())
     .filter(Boolean);
   if (!replyMessages.length) return { action: 'skip', reason: '岗位未配置回复话术', jobName: job.jobName || '' };
-  const verdict = await judgeReplyWithLLM(data.lastText, job.jobName || data.brief?.position || '', stored[MODEL_CONFIG_KEY] || {});
-  if (!verdict.shouldReply) return { action: 'skip', reason: verdict.reason || '判定为冗余', jobName: job.jobName || '' };
+  const verdict = await judgeReplyWithLLM(data.lastText, job.jobName || data.brief?.position || '');
+  if (verdict.billingBlock) warnBillingBlocked('自动回复');
+  if (!verdict.shouldReply) return { action: 'skip', reason: verdict.reason || '判定为冗余', jobName: job.jobName || '', billingBlock: !!verdict.billingBlock };
   return { action: 'reply', jobName: job.jobName || '', replyMessages };
 }
 
@@ -682,6 +783,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     markReplied(message.data?.uid)
       .then(sendResponse)
       .catch(() => sendResponse({ ok: false }));
+    return true;
+  }
+  if (message?.action === 'cmd_rescore_pending') {
+    rescorePendingTalents()
+      .then(sendResponse)
+      .catch(err => sendResponse({ ok: false, error: err.message }));
     return true;
   }
   if ([ACTION.CMD_START, ACTION.CMD_STOP, ACTION.CMD_STATUS].includes(message?.action)) {

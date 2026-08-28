@@ -3,62 +3,158 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>大模型判断配置</title>
+  <title>大模型（托管）</title>
   <link rel="stylesheet" href="shared.css">
   <style>
+    /* ── 余额区 ── */
+    .balance-card {
+      background: var(--surface-warm);
+      border: 1px solid var(--border-soft);
+      border-radius: var(--radius-lg);
+      padding: var(--space-4);
+      margin-bottom: var(--space-5);
+    }
+    .hosted-note {
+      display: flex; gap: 8px; align-items: flex-start;
+      font-size: var(--text-xs); color: var(--muted); line-height: 1.5;
+      background: var(--accent-bg); border-radius: var(--radius-sm);
+      padding: 8px 10px; margin-bottom: var(--space-4);
+    }
+    .stat-row { display: flex; gap: var(--space-3); }
+    .stat-cell {
+      flex: 1; text-align: center;
+      background: var(--bg); border: 1px solid var(--border-soft);
+      border-radius: var(--radius-md); padding: 10px 6px;
+    }
+    .stat-cell .stat-label { font-size: var(--text-xs); color: var(--muted); margin-bottom: 4px; }
+    .stat-cell .stat-value {
+      font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+      font-size: var(--text-lg); font-weight: 600; color: var(--fg);
+    }
+    .stat-cell .stat-value.warn { color: var(--warn); }
+    .stat-cell .stat-value.danger { color: var(--danger); }
+    .balance-banner {
+      display: none; align-items: flex-start; gap: 8px;
+      font-size: var(--text-xs); line-height: 1.5;
+      border-radius: var(--radius-sm); padding: 8px 10px; margin-top: var(--space-3);
+    }
+    .balance-banner.soft { display: flex; background: color-mix(in srgb, var(--warn), transparent 88%); color: #8a6d1f; }
+    .balance-banner.hard, .balance-banner.exhausted {
+      display: flex; background: color-mix(in srgb, var(--danger), transparent 90%); color: var(--danger); font-weight: 500;
+    }
+    .balance-actions { display: flex; gap: var(--space-3); margin-top: var(--space-4); }
+    .balance-actions .btn { flex: 1; }
+    .rescore-row { margin-top: var(--space-3); display: none; }
+    .rescore-row.show { display: block; }
+
+    /* ── 明细折叠 ── */
+    .tx-panel { display: none; margin-top: var(--space-3); border-top: 1px solid var(--border-soft); padding-top: var(--space-3); }
+    .tx-panel.open { display: block; }
+    .tx-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 7px 2px; font-size: var(--text-xs); border-bottom: 1px solid var(--border-soft);
+    }
+    .tx-item:last-child { border-bottom: none; }
+    .tx-scene { color: var(--fg-2); }
+    .tx-time { color: var(--meta); font-size: 11px; margin-top: 2px; }
+    .tx-delta { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 600; }
+    .tx-delta.minus { color: var(--fg); }
+    .tx-delta.plus { color: var(--success); }
+    .tx-empty { text-align: center; color: var(--meta); font-size: var(--text-xs); padding: var(--space-3) 0; }
+
+    /* ── 充值弹层（Lift-On-Overlay）── */
     .modal-overlay {
-      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(0,0,0,0.4); display: none;
+      position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: none;
       align-items: center; justify-content: center; z-index: 100;
       backdrop-filter: blur(4px);
     }
+    .modal-overlay.show { display: flex; }
     .modal {
-      background: var(--bg); width: 90%; max-width: 420px;
-      max-height: 90vh; border-radius: var(--radius-lg);
+      background: var(--bg); width: 90%; max-width: 340px;
+      max-height: 88vh; border-radius: var(--radius-lg);
       display: flex; flex-direction: column;
-      box-shadow: 0 20px 40px rgba(0,0,0,0.15); overflow: hidden;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.18); overflow: hidden;
     }
     .modal-header {
-      padding: 16px; border-bottom: 1px solid var(--border-soft);
+      padding: var(--space-4); border-bottom: 1px solid var(--border-soft);
       display: flex; align-items: center; justify-content: space-between;
     }
-    .modal-body { padding: 16px; overflow-y: auto; flex: 1; }
-    .modal-footer {
-      padding: 16px; border-top: 1px solid var(--border-soft);
-      display: flex; gap: 12px; justify-content: flex-end;
+    .modal-header h3 { margin: 0; font-family: var(--font-display); font-size: var(--text-base); font-weight: 600; }
+    .modal-close { background: none; border: none; font-size: 18px; color: var(--muted); cursor: pointer; line-height: 1; padding: 4px; }
+    .modal-body { padding: var(--space-4); overflow-y: auto; }
+    .qr-placeholder {
+      width: 168px; height: 168px; margin: 0 auto var(--space-4);
+      border: 1.5px dashed var(--border); border-radius: var(--radius-md);
+      display: flex; align-items: center; justify-content: center;
+      color: var(--meta); font-size: var(--text-xs); text-align: center; padding: 10px;
+      background: var(--surface);
     }
-    .connected-badge {
-      font-size: 11px; color: var(--success);
-      background: color-mix(in srgb, var(--success), transparent 90%);
-      padding: 2px 8px; border-radius: 4px;
+    .recharge-note { font-size: var(--text-xs); color: var(--fg-2); line-height: 1.7; }
+    .recharge-note .acct {
+      font-family: var(--font-mono); background: var(--surface);
+      padding: 1px 6px; border-radius: 4px; color: var(--accent);
     }
+    .recharge-note ol { margin: 8px 0 0; padding-left: 18px; }
+    .recharge-note li { margin-bottom: 4px; }
+
+    .section-sub { font-size: var(--text-xs); color: var(--muted); margin: -8px 0 var(--space-4); }
   </style>
 </head>
 <body>
   <div class="panel-content">
     <div class="row-between" style="margin-bottom:16px">
-      <h2 class="section-title" style="margin:0">大模型配置</h2>
-      <span class="connected-badge" id="connStatus" style="display:none">Connected</span>
+      <h2 class="section-title" style="margin:0">大模型（托管）</h2>
+      <span class="badge" id="vipBadge" style="display:none;background:color-mix(in srgb, var(--gold), transparent 85%);color:var(--gold)">会员</span>
     </div>
 
-    <div class="field">
-      <label>API 地址</label>
-      <input type="text" class="input" id="apiUrl" placeholder="https://api.deepseek.com">
+    <!-- ═══ 上段：余额区 ═══ -->
+    <div class="balance-card">
+      <div class="hosted-note" id="hostedNote" style="display:none">
+        <span>ℹ️</span>
+        <span>大模型已由凯旋托管，无需填写密钥，按实际用量以点数计费。新用户已获赠体验点数，用完充值即可。</span>
+      </div>
+
+      <div class="stat-row">
+        <div class="stat-cell">
+          <div class="stat-label">余额（点）</div>
+          <div class="stat-value" id="statBalance">--</div>
+        </div>
+        <div class="stat-cell">
+          <div class="stat-label">今日消耗</div>
+          <div class="stat-value" id="statToday">--</div>
+        </div>
+        <div class="stat-cell">
+          <div class="stat-label">本月消耗</div>
+          <div class="stat-value" id="statMonth">--</div>
+        </div>
+      </div>
+
+      <div class="balance-banner" id="balanceBanner"></div>
+
+      <div class="balance-actions">
+        <button class="btn btn-primary" id="btnRecharge" style="border-radius:var(--radius-pill)">充值</button>
+        <button class="btn btn-secondary" id="btnTxToggle" style="border-radius:var(--radius-pill)">明细 ▾</button>
+      </div>
+
+      <div class="rescore-row" id="rescoreRow">
+        <button class="btn btn-ghost" id="btnRescore" style="width:100%;border-radius:var(--radius-pill)">补打待打分简历</button>
+      </div>
+
+      <div class="tx-panel" id="txPanel">
+        <div id="txList"></div>
+        <div class="tx-empty" id="txEmpty" style="display:none">暂无消费明细</div>
+      </div>
     </div>
-    <div class="field">
-      <label>API Key</label>
-      <input type="password" class="input" id="apiKey" placeholder="sk-...">
-    </div>
-    <div class="field">
-      <label>模型名称</label>
-      <input type="text" class="input" id="modelName" value="deepseek-v4-flash">
-    </div>
+
+    <!-- ═══ 下段：行为配置 ═══ -->
+    <h2 class="section-title" style="font-size:var(--text-base)">行为配置</h2>
+    <div class="section-sub">以下配置影响大模型的对话行为，离焦自动保存。</div>
+
     <div class="field">
       <label>调用大模型时保留的对话轮次</label>
       <input type="number" class="input" id="maxHistoryRounds" value="20" min="1" max="200">
       <div style="font-size:12px;color:var(--muted);margin-top:6px;line-height:1.5">
-        说明：控制每次调用大模型时发送的最近消息数量。轮次越大，消耗的 Token 越多，上下文窗口占用越大。
-        建议根据实际对话长度和大模型上下文限制合理设置，一般 10~30 轮足以覆盖大多数对话场景。
+        控制每次调用大模型时发送的最近消息数量。轮次越大，消耗的点数越多，上下文窗口占用越大。一般 10~30 轮足以覆盖大多数对话场景。
       </div>
     </div>
 
@@ -77,14 +173,28 @@
         此处配置的内容将作为额外的指令追加到系统提示词末尾，影响大模型在所有对话中的行为表现。
       </div>
     </div>
-
-    <div style="display:flex; gap:10px; margin-top:4px; margin-bottom:20px">
-      <button class="btn btn-secondary" style="flex:1" id="btnTestConn">测试连通性</button>
-    </div>
-    <div style="font-size:12px; color:var(--muted); margin-top:-12px; margin-bottom:16px" id="testResult"></div>
-
   </div>
 
+  <!-- ═══ 充值弹层 ═══ -->
+  <div class="modal-overlay" id="rechargeModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>充值点数</h3>
+        <button class="modal-close" id="btnCloseModal" aria-label="关闭">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="qr-placeholder">收款码<br>（接入中，请按下方人工流程充值）</div>
+        <div class="recharge-note">
+          当前为人工充值。请按以下步骤操作：
+          <ol>
+            <li>使用对公转账或联系客服获取收款方式。</li>
+            <li>转账时备注您的注册邮箱：<span class="acct" id="acctEmail">加载中…</span></li>
+            <li>客服确认收款后，会为该账号充值点数，充值后功能自动恢复。</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- Toast -->
   <div id="toast" style="position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1d1d1f;color:#fff;padding:10px 24px;border-radius:8px;font-size:13px;z-index:999;opacity:0;transition:opacity 0.3s;pointer-events:none"></div>

@@ -397,15 +397,10 @@
     chatHistory.push({ role: 'user', content: msg });
 
     try {
-      // 获取大模型配置和通用知识库
+      // 获取大模型配置和通用知识库（托管模式：仅 userPrompt 等行为配置，密钥在服务端）
       const result = await chrome.storage.local.get(['modelConfig', KB_KEY]);
       const modelConfig = result.modelConfig || {};
       const generalKnowledgeBase = result[KB_KEY] || '';
-
-      if (!modelConfig.apiUrl || !modelConfig.apiKey || !modelConfig.model) {
-        body.innerHTML += `<div class="chat-msg ai" style="color:var(--danger)">❌ 请先在大模型回复配置中填写 API 信息</div>`;
-        return;
-      }
 
       // 获取当前测试的岗位配置的知识库
       let positionKnowledgeBase = '';

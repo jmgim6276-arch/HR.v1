@@ -12,9 +12,7 @@
   ],
   "host_permissions": [
     "https://www.zhipin.com/*",
-    "https://hr.uf-tree.com/*",
-    "https://api.openai.com/*",
-    "https://api.deepseek.com/*"
+    "https://hr.uf-tree.com/*"
   ],
   "background": {
     "service_worker": "service-worker/sw.js",

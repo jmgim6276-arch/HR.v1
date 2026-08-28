@@ -68,7 +68,7 @@
       const num = document.createElement('div');
       const hasScore = Number.isFinite(t.score);
       num.className = 'num' + (hasScore ? '' : ' none');
-      num.textContent = hasScore ? String(t.score) : '未打分';
+      num.textContent = hasScore ? String(t.score) : (t.scorePending ? '待打分' : '未打分');
       score.appendChild(num);
       if (hasScore && t.scoreRecommendation) {
         const rec = document.createElement('div');

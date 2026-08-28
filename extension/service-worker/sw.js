@@ -7235,7 +7235,7 @@ function Ie(...s) {
   }
 }
 async function Qn(s, e, t = {}) {
-  let { apiUrl: r, apiKey: n, model: o, userPrompt: i } = s,
+  let { userPrompt: i } = s,
     {
       goalConfigs: c = [],
       achievedMap: d = {},
@@ -7243,8 +7243,14 @@ async function Qn(s, e, t = {}) {
       positionKnowledgeBase: g = "",
     } = t;
   try {
-    let m = new P({ baseURL: r, apiKey: n, timeout: to, maxRetries: 0 }),
-      f = [
+    if (await billingBlockedActive())
+      return {
+        success: !1,
+        error: "点数不足，请充值",
+        code: "BILLING_INSUFFICIENT_BALANCE",
+        billingBlock: !0,
+      };
+    let f = [
         { role: "system", content: no(h, g, c, d, i) },
         ...e
           .filter(($) => $ && $.content != null)
@@ -7253,18 +7259,15 @@ async function Qn(s, e, t = {}) {
             content: $.content,
           })),
       ],
-      I =
-        (
-          await m.chat.completions.create({
-            model: o,
-            messages: f,
-            temperature: 0.7,
-            stream: !1,
-          })
-        ).choices?.[0]?.message?.content || "";
+      A = await rn(llmChatRequest, {
+        scene: "reply_judge",
+        messages: f,
+        temperature: 0.7,
+      }),
+      I = A.content || "";
     return (
       y(
-        `[API] \u{1F916} \u5927\u6A21\u578B\u8BF7\u6C42: model=${o}, \u6D88\u606F\u6570=${f.length}`,
+        `[API] \u{1F916} \u5927\u6A21\u578B\u8BF7\u6C42(\u6258\u7BA1): \u6D88\u606F\u6570=${f.length}`,
       ),
       y(`[API] \u{1F4E8} \u8BF7\u6C42\u63D0\u793A\u8BCD:
 ${f.map(($) => `  [${$.role}] ${($.content || "").slice(0, 500)}`).join(`
@@ -7273,29 +7276,16 @@ ${f.map(($) => `  [${$.role}] ${($.content || "").slice(0, 500)}`).join(`
         y(
           `[API] \u2705 \u5927\u6A21\u578B\u8FD4\u56DE: "${I.slice(0, 300)}..."`,
         ),
-      { success: !0, content: I }
+      { success: !0, content: I, balance: A.balance_points, warnLevel: A.warn_level }
     );
   } catch (m) {
-    return { success: !1, error: m.message || String(m) };
-  }
-}
-async function di(s, e, t) {
-  try {
-    return (
-      await new P({
-        baseURL: s,
-        apiKey: e,
-        timeout: 1e4,
-        maxRetries: 0,
-      }).chat.completions.create({
-        model: t,
-        messages: [{ role: "user", content: "ping" }],
-        max_tokens: 1,
-      }),
-      { success: !0, error: null }
-    );
-  } catch (r) {
-    return { success: !1, error: r.message || String(r) };
+    if (isBillingBlock(m)) await markBillingBlocked("自动回复");
+    return {
+      success: !1,
+      error: m.message || String(m),
+      code: m.code || "",
+      billingBlock: isBillingBlock(m),
+    };
   }
 }
 function Xr() {
@@ -8170,6 +8160,74 @@ async function whobotRecordsRequest(s) {
     accessToken: s,
   });
 }
+// ── 托管大模型代理（密钥只在服务器；插件仅用登录态 token 调 /llm/*）────
+// 与上方各 Request 助手同模式：第一个参数是 accessToken，配合 rn() 自动刷新。
+async function llmChatRequest(s, e) {
+  return $t("/llm/chat", { method: "POST", body: e, accessToken: s });
+}
+async function llmScoreRequest(s, e) {
+  return $t("/llm/score-resume", { method: "POST", body: e, accessToken: s });
+}
+async function llmBalanceRequest(s) {
+  return $t("/billing/balance", { method: "GET", accessToken: s });
+}
+async function llmTransactionsRequest(s, e) {
+  let limit = (e && e.limit) || 30,
+    offset = (e && e.offset) || 0;
+  return $t(`/billing/transactions?limit=${limit}&offset=${offset}`, {
+    method: "GET",
+    accessToken: s,
+  });
+}
+// 断粮判定：后端 402 / BILLING_INSUFFICIENT_BALANCE 即「点数不足」。
+function isBillingBlock(s) {
+  return (
+    (s && s.code === "BILLING_INSUFFICIENT_BALANCE") ||
+    (s && s.status === 402)
+  );
+}
+// 断粮状态（跨 SW 重启持久化）：命中即本地短路、不再打后端；节流复查余额，
+// 充值后 >0 自动清除并恢复。回复引擎在 Qn 入口调用，避免断粮后空耗限流。
+const BILLING_BLOCK_KEY = "billingBlocked";
+let billingBlockProbeAt = 0;
+async function markBillingBlocked(s) {
+  let stored = await chrome.storage.local.get(BILLING_BLOCK_KEY);
+  if (stored[BILLING_BLOCK_KEY]) return; // 已标记，不重复强提示
+  await chrome.storage.local.set({ [BILLING_BLOCK_KEY]: Date.now() });
+  he(
+    "reply",
+    "warn",
+    `⚠️ 点数不足，${s}已暂停；请到「大模型（托管）」页充值，充值后自动恢复`,
+  );
+}
+async function billingBlockedActive() {
+  let stored = await chrome.storage.local.get(BILLING_BLOCK_KEY);
+  if (!stored[BILLING_BLOCK_KEY]) return !1;
+  let now = Date.now();
+  if (now - billingBlockProbeAt < 30 * 1000) return !0; // 30s 内不重复查余额
+  billingBlockProbeAt = now;
+  try {
+    let bal = await rn(llmBalanceRequest);
+    if (bal && Number(bal.balance_points) > 0) {
+      await chrome.storage.local.remove(BILLING_BLOCK_KEY);
+      he("reply", "info", "✅ 点数已充值，自动回复已自动恢复");
+      return !1;
+    }
+  } catch {}
+  return !0;
+}
+// 启动前主动余额门（fail-closed）：余额<=0 则标记断粮并返回 true（调用方据此拒启动）。
+// 网络异常/未登录不硬阻断（返回 false），由调用时 402 / 断粮标记兜底。
+async function llmBalanceEmpty() {
+  try {
+    let bal = await rn(llmBalanceRequest);
+    if (bal && Number(bal.balance_points) > 0) return !1;
+    await markBillingBlocked("自动回复");
+    return !0;
+  } catch {
+    return !1;
+  }
+}
 async function cloudSettingsGetRequest(s) {
   return $t("/users/me/settings", { method: "GET", accessToken: s });
 }
@@ -8960,26 +9018,21 @@ var cn = {
       let h = await Pi();
       if (
         (y(
-          "[SW] \u914D\u7F6E\u5DF2\u52A0\u8F7D, modelConfig:",
-          h.modelConfig.apiUrl ? "\u5DF2\u8BBE\u7F6E" : "\u672A\u8BBE\u7F6E",
+          "[SW] \u914D\u7F6E\u5DF2\u52A0\u8F7D\uFF08\u5927\u6A21\u578B\u6258\u7BA1\u6A21\u5F0F\uFF09",
         ),
         i)
       ) {
-        if (
-          !h.modelConfig.apiUrl ||
-          !h.modelConfig.apiKey ||
-          !h.modelConfig.model
-        )
+        if (await llmBalanceEmpty())
           throw (
-            (console.error("[SW] \u6A21\u578B\u914D\u7F6E\u4E0D\u5B8C\u6574"),
+            (console.error("[SW] \u70B9\u6570\u4E0D\u8DB3\uFF0C\u5DF2\u963B\u6B62\u542F\u52A8"),
             await k(e.id),
             new Error(
-              "\u8BF7\u5148\u5B8C\u6210 LLM \u6A21\u578B\u914D\u7F6E\uFF08API \u5730\u5740\u3001Key\u3001\u6A21\u578B\u540D\u79F0\uFF09",
+              "\u70B9\u6570\u4E0D\u8DB3\uFF0C\u8BF7\u5148\u5230\u300C\u5927\u6A21\u578B\uFF08\u6258\u7BA1\uFF09\u300D\u9875\u5145\u503C\u540E\u7EE7\u7EED\u4F7F\u7528",
             ))
           );
       } else
         y(
-          "[SW] \u6240\u6709\u5C97\u4F4D\u5747\u672A\u5F00\u542F AI \u56DE\u590D\uFF0C\u8DF3\u8FC7\u6A21\u578B\u914D\u7F6E\u6821\u9A8C",
+          "[SW] \u6240\u6709\u5C97\u4F4D\u5747\u672A\u5F00\u542F AI \u56DE\u590D\uFF0C\u8DF3\u8FC7\u4F59\u989D\u6821\u9A8C",
         );
       if (o) {
         if (a.length === 0)
@@ -9130,7 +9183,6 @@ var cn = {
         filename: `\u6C9F\u901A\u8BB0\u5F55_${new Date().toISOString().slice(0, 10)}.csv`,
       };
     },
-    [S.CMD_TEST_LLM_CONN]: async (s) => await di(s.apiUrl, s.apiKey, s.model),
     [S.CMD_TEST_LLM_CHAT]: async (s) =>
       await Qn(s.config, s.messages, {
         goalConfigs: s.goalConfigs || [],
@@ -10095,8 +10147,7 @@ async function Gc(s) {
   }
   let o = await Pi();
   console.log(
-    "[SW] [\u8C03\u5EA6\u5668] \u914D\u7F6E\u5DF2\u52A0\u8F7D, modelConfig:",
-    o.modelConfig.apiUrl ? "\u5DF2\u8BBE\u7F6E" : "\u672A\u8BBE\u7F6E",
+    "[SW] [\u8C03\u5EA6\u5668] \u914D\u7F6E\u5DF2\u52A0\u8F7D\uFF08\u5927\u6A21\u578B\u6258\u7BA1\u6A21\u5F0F\uFF09",
   );
   let d = (
     (await chrome.storage.local.get(R.REPLY_POSITION_CONFIGS))[
@@ -10126,11 +10177,10 @@ async function Gc(s) {
         : "\u542F\u7528\u4E86" + d.length + "\u4E2A\u5C97\u4F4D",
       "keywordReply=" + g + ", aiReply=" + h,
     ),
-    h &&
-      (!o.modelConfig.apiUrl || !o.modelConfig.apiKey || !o.modelConfig.model))
+    h && (await llmBalanceEmpty()))
   ) {
     console.warn(
-      "[SW] [\u8C03\u5EA6\u5668] LLM \u914D\u7F6E\u4E0D\u5B8C\u6574\uFF08\u7F3A\u5C11 API \u5730\u5740/Key/\u6A21\u578B\u540D\u79F0\uFF09\uFF0C\u8DF3\u8FC7\u81EA\u52A8\u542F\u52A8",
+      "[SW] [\u8C03\u5EA6\u5668] \u70B9\u6570\u4E0D\u8DB3\uFF0C\u8DF3\u8FC7\u81EA\u52A8\u542F\u52A8\uFF08\u8BF7\u5230\u300C\u5927\u6A21\u578B\uFF08\u6258\u7BA1\uFF09\u300D\u9875\u5145\u503C\uFF09",
     ),
       await k(r.id);
     return;
@@ -10588,66 +10638,8 @@ checkSessionHeartbeat().catch(() => {});
     return requireActiveSubscriptionOnline();
   }
 
-  function buildSystemPrompt(dims, jd) {
-    const dimText = dims
-      .map((d) => `- ${d.label}（key=${d.key}，权重 ${d.weight}%）`)
-      .join("\n");
-    return [
-      "你是一名资深招聘专家。下面是从简历页面 canvas 抓取的候选人文本，",
-      "文字顺序可能错乱、有碎片，请先重排、结构化，再依据岗位要求打分。",
-      "",
-      "【岗位要求 / JD】",
-      jd || "（未提供，按通用标准评估）",
-      "",
-      "【评分维度】",
-      dimText,
-      "",
-      "【输出要求】严格只输出 JSON，不要多余文字、不要代码块包裹：",
-      '{"overall":<0-100整数,按权重加权>,"dimensions":[{"key":"...","label":"...","score":<0-100>,"reason":"一句话依据"}],"highlights":["亮点"],"risks":["风险"],"recommendation":"强烈推荐|推荐|一般|不推荐","summary":"两三句总评"}',
-    ].join("\n");
-  }
-
-  function parseJson(text) {
-    if (!text) throw new Error("模型返回为空");
-    let s = text
-      .trim()
-      .replace(/^```(?:json)?/i, "")
-      .replace(/```$/, "")
-      .trim();
-    const a = s.indexOf("{"),
-      b = s.lastIndexOf("}");
-    if (a !== -1 && b !== -1) s = s.slice(a, b + 1);
-    return JSON.parse(s);
-  }
-
-  async function callLLM(cfg, sys, userContent) {
-    const base = cfg.apiUrl.replace(/\/+$/, "");
-    const url = base.endsWith("/chat/completions")
-      ? base
-      : `${base}/chat/completions`;
-    const resp = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${cfg.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: cfg.model,
-        temperature: 0.3,
-        stream: false,
-        messages: [
-          { role: "system", content: sys },
-          { role: "user", content: userContent },
-        ],
-      }),
-    });
-    if (!resp.ok)
-      throw new Error(
-        `LLM HTTP ${resp.status}: ${(await resp.text().catch(() => "")).slice(0, 200)}`,
-      );
-    return (await resp.json()).choices?.[0]?.message?.content || "";
-  }
-
+  // 提示词与脱敏已移到服务端 /llm/score-resume（见后端 core.py，与原版逐字一致）。
+  // 插件只传 jd_text + resume_text + dimensions，不再接触密钥、不再本地组提示词。
   async function scoreResume(payload = {}) {
     const { resumeText, jobDescription = "", candidateId = "" } = payload;
     const dims = payload.dimensions?.length
@@ -10659,20 +10651,14 @@ checkSessionHeartbeat().catch(() => {});
         error: "简历文本为空或过短，可能未成功抓取到 canvas 内容",
       };
     try {
-      await ensureVip(); // ← 订阅校验
-      const r = await chrome.storage.local.get(MODEL_CONFIG_KEY);
-      const cfg = r[MODEL_CONFIG_KEY] || {};
-      if (!cfg.apiUrl || !cfg.apiKey || !cfg.model)
-        return {
-          ok: false,
-          error: "LLM 未配置：请先在设置里填写 apiUrl / apiKey / model",
-        };
-      const raw = await callLLM(
-        cfg,
-        buildSystemPrompt(dims, jobDescription),
-        `【候选人简历文本】\n${maskContacts(resumeText)}`,
-      );
-      const result = parseJson(raw);
+      await ensureVip(); // ← 订阅校验（服务端仍双闸门，此处前置快速反馈）
+      const res = await rn(llmScoreRequest, {
+        jd_text: jobDescription,
+        resume_text: resumeText,
+        detail: "full",
+        dimensions: dims,
+      });
+      const result = res.result;
       if (candidateId)
         await chrome.storage.local.set({
           [RESULT_KEY_PREFIX + candidateId]: {
@@ -10680,9 +10666,19 @@ checkSessionHeartbeat().catch(() => {});
             scoredAt: Date.now(),
           },
         });
-      return { ok: true, result };
+      return {
+        ok: true,
+        result,
+        balance: res.balance_points,
+        warnLevel: res.warn_level,
+      };
     } catch (err) {
-      return { ok: false, error: err.message, code: err.code };
+      return {
+        ok: false,
+        error: err.message,
+        code: err.code,
+        billingBlock: isBillingBlock(err),
+      };
     }
   }
 
@@ -10693,6 +10689,43 @@ checkSessionHeartbeat().catch(() => {});
     }
   });
   console.log("[SW] 简历打分模块已加载 (cmd_score_resume)");
+})();
+
+/* ============================================================
+ * 托管计费查询模块（追加，独立于上方压缩代码）
+ * cmd_get_billing_balance / cmd_get_billing_transactions：
+ * 供大模型页余额区轮询；只透传点数，token/单价永不出后端。
+ * ============================================================ */
+(() => {
+  chrome.runtime.onMessage.addListener((msg, _s, sendResponse) => {
+    if (!_s || _s.tab) return; // 只接侧栏
+    if (msg && msg.command === "cmd_get_billing_balance") {
+      (async () => {
+        try {
+          const balance = await rn(llmBalanceRequest);
+          return { ok: true, balance };
+        } catch (err) {
+          return { ok: false, error: err.message, code: err.code };
+        }
+      })().then(sendResponse);
+      return true; // 异步响应
+    }
+    if (msg && msg.command === "cmd_get_billing_transactions") {
+      (async () => {
+        try {
+          const tx = await rn(llmTransactionsRequest, {
+            limit: msg.limit || 30,
+            offset: msg.offset || 0,
+          });
+          return { ok: true, ...tx };
+        } catch (err) {
+          return { ok: false, error: err.message, code: err.code };
+        }
+      })().then(sendResponse);
+      return true; // 异步响应
+    }
+  });
+  console.log("[SW] 托管计费查询模块已加载 (cmd_get_billing_balance/transactions)");
 })();
 
 import {

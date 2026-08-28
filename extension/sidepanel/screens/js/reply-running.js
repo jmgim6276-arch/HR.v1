@@ -136,13 +136,18 @@
       );
     }
 
-    // 有岗位启用AI回复 → 校验大模型配置完整性
+    // 有岗位启用AI回复 → 校验托管点数余额（密钥在服务端，余额<=0 则拒启动）
     if (anyAiReply) {
-      const modelConfig = result.modelConfig || {};
-      if (!modelConfig.apiUrl || !modelConfig.apiKey || !modelConfig.model) {
-        reasons.push(
-          "有岗位启用「AI回复」但大模型配置不完整（请填写API地址、Key、模型名称）",
-        );
+      try {
+        const resp = await chrome.runtime.sendMessage({ command: 'cmd_get_billing_balance' });
+        const bal = resp && resp.ok ? resp.balance : null;
+        if (bal && Number(bal.balance_points) <= 0) {
+          reasons.push(
+            "有岗位启用「AI回复」但点数不足，请先到「大模型（托管）」页充值",
+          );
+        }
+      } catch (_) {
+        // 余额查询失败（网络/未登录）不阻断启动，由调用时断粮标记兜底
       }
     }
 
