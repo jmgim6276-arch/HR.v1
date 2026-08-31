@@ -275,10 +275,11 @@ export function createWorkflowOrchestrator({
     transitionPromise = (async () => {
       await chrome.alarms.clear(DEADLINE_ALARM).catch(() => {});
       await chrome.alarms.clear(REPLY_RESTART_ALARM).catch(() => {});
-      if (runtime.config?.modules?.reply) await runCommand('cmd_stop').catch(() => {});
-      if (runtime.config?.modules?.resume) await stopResumeCollector().catch(() => {});
-      runtime.moduleStates = { ...runtime.moduleStates, reply: 'idle', resume: 'idle' };
       const cycle = (runtime.cycleCount || 0) + 1;
+      // 先把阶段切到 greeting 再停回复/采集：内容脚本收到停止指令后会广播
+      // idle 状态（如采集器的「用户已停止」），这些上报走 listening 专属分支，
+      // 阶段切走后会被天然忽略；否则编排自己发起的停止会被误判成「意外停止」
+      // 触发全局人工暂停（真机专属时序，mock 不广播状态故测试套件覆盖不到）。
       await update({
         state: 'running',
         stage: 'greeting',
@@ -288,6 +289,9 @@ export function createWorkflowOrchestrator({
         deadlineAt: 0,
         statusText: `第 ${cycle} 轮：正在返回推荐页打招呼`,
       });
+      if (runtime.config?.modules?.reply) await runCommand('cmd_stop').catch(() => {});
+      if (runtime.config?.modules?.resume) await stopResumeCollector().catch(() => {});
+      runtime.moduleStates = { ...runtime.moduleStates, reply: 'idle', resume: 'idle' };
       await log(`🔁 第 ${cycle} 轮：回到推荐页继续打招呼`);
       await refreshModuleApprovals();
       await runCommand('cmd_start_greeting');

@@ -56,6 +56,14 @@ const orchestrator = createWorkflowOrchestrator({
   async runCommand(action) {
     calls.push(action);
     if (action === 'cmd_validate_subscription') return { valid: true };
+    // 真实时序：回复引擎先广播 idle 状态上报，编排器的 await cmd_stop 还没返回
+    // 就会收到。编排器必须按阶段忽略，否则把自己发起的停止误判成「意外停止」
+    // 触发全局人工暂停（2026-08-28 真机回归：回打后流水线显示"需人工处理：用户已停止"）
+    if (action === 'cmd_stop') {
+      for (const listener of runtimeListeners) {
+        listener({ action: 'status_report', data: { state: 'idle', statusText: '已停止' } });
+      }
+    }
     return { ok: true };
   },
   async startResumeCollector(config) {
@@ -66,6 +74,10 @@ const orchestrator = createWorkflowOrchestrator({
   async stopResumeCollector() {
     calls.push('stopResumeCollector');
     collectorStatus = { state: 'idle' };
+    // 真实时序：采集内容脚本先广播「用户已停止」idle，再回 rc_stop 响应（同上）
+    for (const listener of runtimeListeners) {
+      listener({ action: 'rc_status_update', data: { state: 'idle', statusText: '用户已停止' } });
+    }
     return { ok: true };
   },
   async resumeResumeCollector() {
@@ -197,6 +209,7 @@ await waitForRestart();
 status = await h.cmd_get_unified_workflow_status();
 assert.equal(status.stage, 'greeting');
 assert.equal(status.cycleCount, 2);
+assert.equal(status.state, 'running', '回打不得被停止引发的状态上报误判成人工暂停');
 assert.ok(calls.filter(item => item === 'cmd_start_greeting').length >= 2);
 assert.ok(calls.includes('cmd_stop'));
 assert.ok(calls.includes('stopResumeCollector'));
@@ -215,6 +228,7 @@ await replyPassIdle();
 status = await h.cmd_get_unified_workflow_status();
 assert.equal(status.stage, 'greeting');
 assert.equal(status.cycleCount, 3);
+assert.equal(status.state, 'running', '空转回打不得被停止引发的状态上报误判成人工暂停');
 
 // 第三轮 0 人 → 空轮 2 → 空转回打第四轮；第四轮 0 人 → 空轮 3 → 最后一次监听
 await greetingRoundDone();

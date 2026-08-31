@@ -137,11 +137,19 @@
   }
 
   const moduleStateLabels = { idle: '未启动', running: '运行中', paused: '已暂停', stopping: '停止中', completed: '已完成', stopped: '已停止' };
+  // 采集器自报的详细状态文案（每 3s 随统计轮询刷新）。真机开 DevTools 会被 BOSS
+  // 反调试踢下线，这是面板内定位「采集为什么不点/不收」的唯一窗口。
+  let resumeLiveText = '';
   function renderModuleState(module, state) {
     const key = module[0].toUpperCase() + module.slice(1);
     const textEl = $('status' + key);
     const dotEl = $('dot' + key);
-    if (textEl) textEl.textContent = moduleStateLabels[state] || state || '未启动';
+    const label = moduleStateLabels[state] || state || '未启动';
+    if (textEl) {
+      textEl.textContent = module === 'resume' && resumeLiveText && (state === 'running' || state === 'paused')
+        ? `${label} · ${resumeLiveText}`
+        : label;
+    }
     if (dotEl) dotEl.className = `mdot ${state === 'running' ? 'running' : state === 'paused' ? 'paused' : ''}`;
   }
 
@@ -153,6 +161,7 @@
       for (const [id, key] of Object.entries(map)) {
         if (stats[key] !== undefined && $(id)) $(id).textContent = stats[key];
       }
+      resumeLiveText = st?.state && st.state !== 'idle' ? (st.statusText || '') : '';
     } catch (_) { /* 采集器未启动时忽略 */ }
   }
 
