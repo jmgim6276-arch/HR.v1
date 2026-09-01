@@ -40,6 +40,14 @@
     '预览附件简历',
     '预览加密附件简历',
   ];
+  // 列表行「最后一条消息预览」里的简历意图信号，仅用于列表预筛（与未读并列的 OR 条件）。
+  // 命中只是「值得打开看看」，是否真的同意仍由进会话后的 findResumeAcceptTargets 判定，
+  // 所以这里宁宽勿漏——多开一个无简历会话只浪费一次点击，漏一个就是客户投诉的「没采集」。
+  const RESUME_ROW_PREVIEW_TOKENS = [
+    '交换简历', '求简历', '附件简历', '加密附件简历',
+    '是否同意接收简历', '同意接收简历', '接收简历', '发送简历',
+    '点击【确定】', '[简历]', '[附件简历]', '[附件]',
+  ];
   const RISK_TEXTS = ['安全验证', '操作频繁', '访问过于频繁', '账号异常', '请完成验证'];
   const FAILURE_STORAGE_KEY = 'resumeCollectFailures';
   const GLOBAL_PAUSE_PATTERN = /安全验证|操作频繁|访问过于频繁|账号异常|请完成验证|登录|订阅|页面已离开|无法确认预览窗口|内容脚本|Extension context/i;
@@ -264,6 +272,14 @@
     return false;
   }
 
+  // 列表行预览文本是否透露「有待处理的简历」。只认关键词、不看未读，
+  // 因此能接住「未读被自动回复读掉」「按职位分组（红点在分组头）」这两类行级无未读的会话。
+  function hasResumeRequestPreview(row) {
+    const text = compactUiText(row?.textContent || '');
+    if (!text || text.length > 1200) return false;
+    return RESUME_ROW_PREVIEW_TOKENS.some(token => text.includes(compactUiText(token)));
+  }
+
   function getConversationRows() {
     const selectors = [
       'div[id^="_"]',
@@ -282,7 +298,13 @@
         const id = el.id || '';
         const likelyConversation = /^_\d+-/.test(id) ||
           /(?:friend|user|geek|chat).*(?:item|card)|(?:item|card).*(?:friend|user|geek|chat)/i.test(String(el.className || ''));
-        if (!likelyConversation || !hasUnreadMarker(el)) continue;
+        if (!likelyConversation) continue;
+        // 入选条件：有未读，或列表预览文本透露「有待收简历」。后者是关键——自动回复先把
+        // 未读读掉、或按职位分组（红点在分组头）时，待收简历的会话行级未读是 0，只认未读必漏。
+        const unread = hasUnreadMarker(el);
+        const resumeOnly = !unread && hasResumeRequestPreview(el);
+        if (!unread && !resumeOnly) continue;
+        el.__kxResumeOnly = resumeOnly;
         seen.add(el);
         rows.push(el);
       }
@@ -1044,8 +1066,10 @@
         setStage('locate_resume_consent', meta);
         const acceptTarget = await waitForResumeAcceptTarget(conversationConfirmation);
         if (!acceptTarget) {
-          // Ph3：非简历的未读会话，路由到"判断回复"（复用本采集器已打开的信息条上下文）
-          if (runtime.config?.routeNonResumeReply) {
+          // Ph3：非简历的未读会话，路由到"判断回复"（复用本采集器已打开的信息条上下文）。
+          // 仅限「因未读而打开」的会话：凭简历意图打开却没找到同意按钮的（如我方求简历、
+          // 对方尚未发），候选人没发新消息，路由去自动回复会发出打扰话术，直接跳过。
+          if (runtime.config?.routeNonResumeReply && !row.__kxResumeOnly) {
             return await routeToReplyJudgment(meta);
           }
           runtime.stats.skipped++;
