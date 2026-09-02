@@ -1450,6 +1450,7 @@
             `跳过 ${s.name || "候选人"}：页面未识别到可回复的候选人消息`,
             "warn",
           );
+          await this._handoffToCollector(s.uid, s.name);
           return !1;
         }
         l = [
@@ -1471,7 +1472,36 @@
       } finally {
         this.processingFlags.delete(s.uid);
       }
+      await this._handoffToCollector(s.uid, s.name);
       return !0;
+    }
+    // 联动模式：回复处理完一条已开会话后，把「这人有简历吗」交给采集器在同一趟收掉（先回后收）。
+    // 仅当采集器处于联动等喂（window.__kxCollectorDriven === true）时才真的等；否则立即放行，不拖慢回复。
+    // 等 KX_COLLECT_DONE 设 45s 上限，超时放行——采集器卡死也绝不拖累回复循环。
+    async _handoffToCollector(e, t) {
+      try {
+        if (window.__kxCollectorDriven !== true) return;
+        let s = String(e || "");
+        if (!s) return;
+        window.postMessage(
+          { source: "BOSS_PLUGIN_CS", type: "KX_COLLECT_CURRENT", geekId: s, name: t || "" },
+          "*",
+        );
+        await new Promise((i) => {
+          let n,
+            r = (l) => {
+              let d = l && l.data;
+              d &&
+                d.type === "KX_COLLECT_DONE" &&
+                String(d.geekId) === s &&
+                (clearTimeout(n), window.removeEventListener("message", r), i());
+            };
+          n = setTimeout(() => {
+            window.removeEventListener("message", r), i();
+          }, 45e3);
+          window.addEventListener("message", r);
+        });
+      } catch (_) {}
     }
     async _runPositionPlan() {
       try {

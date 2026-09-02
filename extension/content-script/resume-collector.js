@@ -155,6 +155,9 @@
       autoSendReply,
       replyMessages,
       routeNonResumeReply: input?.routeNonResumeReply === true,
+      // 联动模式（用户拍板 2026-08-31）：自动回复开着时，采集不再独立扫列表，改为「回复打开会话→
+      // 顺手在同一趟收简历」。因为点开未读即消红点，两个模块各自扫会互相抢信号。由编排器按 modules.reply 透传。
+      drivenByReply: input?.drivenByReply === true,
     };
   }
 
@@ -522,6 +525,9 @@
   }
 
   function isConversationConfirmationValid(confirmation) {
+    // 联动模式：回复引擎已打开目标会话并原地等 DONE，当前会话即目标，无行可校。
+    // 身份兜底交给 findResumeAcceptTargets——它只认「带简历请求语境的同意按钮」，错会话骗不出误点。
+    if (confirmation?.mode === 'open') return true;
     const row = confirmation?.row;
     if (!conversationRowMatchesKey(row, confirmation?.expectedKey)) return false;
     if (confirmation.mode === 'selected') return isConversationRowSelected(row);
@@ -1052,6 +1058,21 @@
       if (!conversationConfirmation) {
         throw new Error(`${meta.name || '该候选人'}点击后未能确认会话已选中`);
       }
+      // 独立模式凭未读打开才可能路由去回复；凭简历意图打开（__kxResumeOnly）的不路由（防打扰）。
+      const allowRouteReply = runtime.config?.routeNonResumeReply && !row.__kxResumeOnly;
+      return await collectOpenConversationBody(meta, conversationConfirmation, allowRouteReply);
+    } finally {
+      await setCoordinationLock(false, meta);
+      runtime.currentMeta = null;
+      runtime.currentStage = '';
+    }
+  }
+
+  // 「会话已打开」之后的收简历主体：找卡 → 点同意 → 预览 → 提取 →（可选）回发话术。
+  // processUnreadRow（独立模式，自己点行开会话）与 collectCurrentOpenConversation（联动模式，
+  // 会话已由自动回复打开）共用。allowRouteReply＝没找到同意按钮时是否路由去自动回复——独立模式
+  // 凭未读打开、可路由；联动模式会话刚被回复处理过，绝不重复路由以免对候选人发打扰话术。
+  async function collectOpenConversationBody(meta, conversationConfirmation, allowRouteReply) {
     // 选中状态出现后再留出一段聊天区渲染时间。BOSS 可以复用同一按钮 DOM，
     // 因此不再以 DOM 对象是否变化判断候选人切换。
     await sleep(2400);
@@ -1067,9 +1088,9 @@
         const acceptTarget = await waitForResumeAcceptTarget(conversationConfirmation);
         if (!acceptTarget) {
           // Ph3：非简历的未读会话，路由到"判断回复"（复用本采集器已打开的信息条上下文）。
-          // 仅限「因未读而打开」的会话：凭简历意图打开却没找到同意按钮的（如我方求简历、
-          // 对方尚未发），候选人没发新消息，路由去自动回复会发出打扰话术，直接跳过。
-          if (runtime.config?.routeNonResumeReply && !row.__kxResumeOnly) {
+          // 仅限独立模式凭未读打开的会话（调用方以 allowRouteReply 传入）；联动模式或凭简历意图
+          // 打开的会话，候选人没发新消息，路由去自动回复会发出打扰话术，直接跳过。
+          if (allowRouteReply) {
             return await routeToReplyJudgment(meta);
           }
           runtime.stats.skipped++;
@@ -1176,8 +1197,32 @@
       }
     }
     return { outcome: 'collected', meta };
+  }
+
+  // 列表里按候选人 key 找会话行（行 id 形如 `_<uid>-…`，与 getCandidateMeta 的 key 同源）。
+  // 仅供联动模式做行级身份校验；找不到（虚拟列表滚出可视区）时降级 open 模式。
+  function findConversationRowByKey(key) {
+    if (!key) return null;
+    const el = document.querySelector(`[id^="_${key}-"]`);
+    return (el && isVisible(el)) ? el : null;
+  }
+
+  // 联动模式入口：自动回复打开某会话并原地等 DONE（index.js `_handoffToCollector` 发 KX_COLLECT_CURRENT），
+  // 采集器在这同一趟里收简历。不点行、不设编排锁（回复已停等，无页面争抢），收完由监听处回 KX_COLLECT_DONE。
+  async function collectCurrentOpenConversation(hint) {
+    const geekId = String(hint?.geekId || '');
+    const name = String(hint?.name || '');
+    const meta = { candidateId: geekId, name, position: '', rowText: '', key: geekId || name };
+    // 优先行级身份校验：列表里找到该候选人且行处于选中态，即确认当前会话就是 TA。
+    const row = findConversationRowByKey(geekId);
+    const confirmation = (row && isConversationRowSelected(row))
+      ? { mode: 'selected', row, expectedKey: geekId }
+      : { mode: 'open', row: null, expectedKey: geekId };
+    setStage('open_conversation', meta);
+    setStatus('running', `联动收简历：${name || '候选人'}`);
+    try {
+      return await collectOpenConversationBody(meta, confirmation, false);
     } finally {
-      await setCoordinationLock(false, meta);
       runtime.currentMeta = null;
       runtime.currentStage = '';
     }
@@ -1284,6 +1329,15 @@
     runtime.consecutiveErrors = 0;
     runtime.deadlineAt = Date.now() + runtime.config.listenDurationMinutes * 60 * 1000;
     runtime.pausedAt = 0;
+    if (runtime.config.drivenByReply) {
+      // 联动模式：不跑独立扫描循环，转为「运行中·等自动回复喂会话」。全程保持 running、绝不报 idle——
+      // 否则编排器会按「采集意外停止」触发全局人工暂停（orchestrator observeMessage 的 rc_status_update 分支）。
+      // window.__kxCollectorDriven 是给 index.js 的就绪标记：它为 true 回复引擎才会在会话收尾时等 DONE。
+      window.__kxCollectorDriven = true;
+      setStatus('running', '联动模式：等待自动回复喂入会话');
+      log('简历采集已启动（联动模式）：自动回复打开会话后顺手收简历，不独立扫描列表');
+      return snapshotStatus();
+    }
     setStatus('running', '正在扫描当前可见的未读会话');
     const replyHint = runtime.config.autoSendReply
       ? `；入库后自动发送 ${runtime.config.replyMessages.length} 条回复`
@@ -1295,6 +1349,7 @@
 
   function stop() {
     runtime.stopRequested = true;
+    window.__kxCollectorDriven = false;
     setStatus('idle', '用户已停止');
     log('已收到停止指令');
     return snapshotStatus();
@@ -1309,11 +1364,41 @@
     }
     runtime.pausedAt = 0;
     runtime.stopRequested = false;
+    if (runtime.config?.drivenByReply) {
+      // 联动模式：恢复后仍回「等喂」待命，绝不起独立扫描循环（当前 paused 只在 runLoop 里触发，
+      // 联动模式本到不了这里；此为防御，避免未来新增 paused 路径时误把独立循环拉起）。
+      setStatus('running', '联动模式：等待自动回复喂入会话');
+      log('▶ 已从暂停恢复（联动模式，等待自动回复喂入）');
+      return snapshotStatus();
+    }
     setStatus('running', '已恢复，继续监听简历请求');
     log('▶ 已从暂停阶段恢复简历采集');
     setTimeout(runLoop, 0);
     return snapshotStatus();
   }
+
+  // 联动模式喂入监听：index.js 在一条已开会话处理完时发 KX_COLLECT_CURRENT，这里在同一趟收简历。
+  // 收完、无需收、失败、非联动——任何分支都回 KX_COLLECT_DONE：回复引擎只在 window.__kxCollectorDriven
+  // 为 true 时才等它，但回 DONE 兜底能确保回复引擎绝不因等不到而空耗 45s。
+  window.addEventListener('message', (event) => {
+    const d = event?.data;
+    if (!d || d.type !== 'KX_COLLECT_CURRENT') return;
+    const geekId = String(d.geekId || '');
+    const done = () => window.postMessage({ source: 'BOSS_PLUGIN_CS', type: 'KX_COLLECT_DONE', geekId }, '*');
+    if (runtime.state !== 'running' || !runtime.config?.drivenByReply) { done(); return; }
+    if (runtime.__kxCollecting) { done(); return; } // 回复逐条等 DONE 本已串行，此为防重入兜底
+    runtime.__kxCollecting = true;
+    (async () => {
+      try {
+        await collectCurrentOpenConversation({ geekId, name: d.name });
+      } catch (err) {
+        log(`联动收简历失败：${err?.message || err}`, 'error');
+      } finally {
+        runtime.__kxCollecting = false;
+        done();
+      }
+    })();
+  });
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     try {

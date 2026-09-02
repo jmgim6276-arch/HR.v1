@@ -243,6 +243,8 @@ export function createWorkflowOrchestrator({
           maxPerRun: runtime.config.maxPerRun,
           autoSendReply: runtime.config.autoSendReply === true,
           routeNonResumeReply: runtime.config.modules.reply === true,
+          // 联动模式：回复模块开着时，采集转为「回复打开会话顺手收」，关独立扫描循环（用户拍板 2026-08-31）
+          drivenByReply: runtime.config.modules.reply === true,
         });
         runtime.moduleStates.resume = 'running';
         await log('📥 简历采集已启动；发现有效简历时将优先处理');
@@ -399,6 +401,8 @@ export function createWorkflowOrchestrator({
               maxPerRun: runtime.config.maxPerRun,
               autoSendReply: runtime.config.autoSendReply === true,
               routeNonResumeReply: runtime.config.modules.reply === true,
+          // 联动模式：回复模块开着时，采集转为「回复打开会话顺手收」，关独立扫描循环（用户拍板 2026-08-31）
+          drivenByReply: runtime.config.modules.reply === true,
             });
           }
           runtime.moduleStates.resume = 'running';

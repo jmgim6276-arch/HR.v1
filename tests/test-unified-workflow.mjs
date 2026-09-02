@@ -117,6 +117,9 @@ assert.equal(resumeStart[1].listenDurationMinutes, 120);
 assert.equal(resumeStart[1].maxPerRun, 100);
 assert.equal(resumeStart[1].intervalSeconds, 60);
 assert.equal(resumeStart[1].autoSendReply, false);
+// 联动模式（2026-08-31）：回复模块开 → 采集被回复驱动（drivenByReply），不独立扫列表
+assert.equal(resumeStart[1].routeNonResumeReply, true);
+assert.equal(resumeStart[1].drivenByReply, true);
 
 // 简历获得页面操作权时暂停回复，释放后恢复。
 await h.cmd_workflow_resume_lock({ name: '测试候选人' });
@@ -364,4 +367,18 @@ assert.equal(resumeTuned[1].actionDelaySeconds, 6);
 assert.equal(resumeTuned[1].autoSendReply, true);
 await h.cmd_stop_unified_workflow();
 
-console.log('✅ 三模块开关、循环编排（每轮计数/空转回打/空轮收尾）、采集优先锁、暂停顺延、永久跳过与人工恢复全部通过');
+// 联动模式反向：回复模块关 → 采集保持独立扫描（drivenByReply=false）
+await tick();
+approve();
+calls.length = 0;
+status = await h.cmd_start_unified_workflow({
+  modules: { greeting: false, reply: false, resume: true },
+  listenDurationMinutes: 60,
+  scanIntervalSeconds: 45,
+});
+const resumeSolo = calls.find(item => Array.isArray(item) && item[0] === 'startResumeCollector');
+assert.equal(resumeSolo[1].drivenByReply, false);
+assert.equal(resumeSolo[1].routeNonResumeReply, false);
+await h.cmd_stop_unified_workflow();
+
+console.log('✅ 三模块开关、循环编排（每轮计数/空转回打/空轮收尾）、采集优先锁、暂停顺延、永久跳过与人工恢复、采集联动开关全部通过');
