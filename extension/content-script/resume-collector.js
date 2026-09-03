@@ -1392,7 +1392,16 @@
       try {
         await collectCurrentOpenConversation({ geekId, name: d.name });
       } catch (err) {
-        log(`联动收简历失败：${err?.message || err}`, 'error');
+        const message = String(err?.message || err);
+        log(`联动收简历失败：${message}`, 'error');
+        // 全局暂停类错误（风控验证/操作频繁/登录订阅失效/预览窗关不掉等）不能吞：独立模式
+        // 会 paused 让编排器全线停等人工（含回复引擎），联动模式必须同样上报——否则回复
+        // 引擎会在风控页面上继续跑，且「为避免串人已立即停止」的 stopRequested 在联动模式
+        // 没有 runLoop 消费、会被架空。done() 照发：回复引擎的等待绝不因上报而挂死。
+        if (GLOBAL_PAUSE_PATTERN.test(message)) {
+          runtime.pausedAt = Date.now();
+          setStatus('paused', `需人工处理：${message}`);
+        }
       } finally {
         runtime.__kxCollecting = false;
         done();

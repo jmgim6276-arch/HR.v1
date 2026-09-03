@@ -604,6 +604,9 @@ export async function startCollector(data = {}) {
     autoSendReply,
     replyMessages,
     routeNonResumeReply: data.routeNonResumeReply === true,
+    // 联动模式（2026-08-31 拍板）：回复模块开着时采集由回复驱动、不独立扫列表。编排器按
+    // modules.reply 透传——此前本层漏转发，CS normalizeConfig 恒得 false，联动从未生效（P0）。
+    drivenByReply: data.drivenByReply === true,
   };
   await chrome.storage.local.set({ [CONFIG_KEY]: config });
   const response = await sendToCollector(tab.id, ACTION.CS_START, config);
