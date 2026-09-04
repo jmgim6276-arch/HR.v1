@@ -78,7 +78,7 @@ function normalizeConfig(input = {}) {
   }
   return {
     modules,
-    listenDurationMinutes: Math.min(240, Math.max(1, Number(input.listenDurationMinutes) || 120)),
+    listenDurationMinutes: Math.min(240, Math.max(1, Number(input.listenDurationMinutes) || 30)),
     scanIntervalSeconds: Math.min(300, Math.max(15, Number(input.scanIntervalSeconds) || 60)),
     greetingCap: Math.min(500, Math.max(0, Number(input.greetingCap) || 0)),
     // 简历采集调参（合并控制台后由一键运行采集折叠区提供；缺省保持原行为）

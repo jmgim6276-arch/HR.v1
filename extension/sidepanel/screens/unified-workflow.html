@@ -135,9 +135,9 @@
         <input id="greetingCap" type="number" min="0" max="500" value="0">
         <span class="hint">填 N = 每轮打满 N 人后切到沟通页监听回复；填 0 = 每轮打到列表自然结束。监听中无回复、无新简历时会自动回来打下一轮。</span>
       </label>
-      <label class="field">单次监听上限（分钟）
-        <input id="listenDuration" type="number" min="1" max="240" value="120">
-        <span class="hint">单次监听的安全上限，默认 120 分钟；连续约 2 个扫描周期无回复、无新简历会提前回到打招呼。暂停等待人工处理的时间不计入。</span>
+      <label class="field">单次聊天上限（分钟）
+        <input id="listenDuration" type="number" min="1" max="240" value="30">
+        <span class="hint">没新消息时会自动回去打新招呼（通常几分钟，不用等满）。这个数是“一直聊个不停”时的上限：到点也自动回去打一轮新招呼——对话不丢、下轮接着聊。一般用默认值就行，不懂不用改。</span>
       </label>
       <label class="field">简历扫描间隔（秒）
         <input id="scanInterval" type="number" min="15" max="300" value="60">

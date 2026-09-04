@@ -598,7 +598,7 @@ export async function startCollector(data = {}) {
     maxPerRun: Math.min(200, Math.max(1, Number(data.maxPerRun) || 5)),
     intervalSeconds: Math.min(300, Math.max(60, Number(data.intervalSeconds) || 60)),
     scanIntervalSeconds: Math.min(300, Math.max(15, Number(data.scanIntervalSeconds) || 60)),
-    listenDurationMinutes: Math.min(240, Math.max(1, Number(data.listenDurationMinutes) || 120)),
+    listenDurationMinutes: Math.min(240, Math.max(1, Number(data.listenDurationMinutes) || 30)),
     actionDelaySeconds: Math.min(15, Math.max(4, Number(data.actionDelaySeconds) || 4)),
     coordinatedMode: data.coordinatedMode === true,
     autoSendReply,

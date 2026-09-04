@@ -31,7 +31,7 @@
         reply: $('enableReply').checked,
         resume: $('enableResume').checked,
       },
-      listenDurationMinutes: Math.min(240, Math.max(1, Number($('listenDuration').value) || 120)),
+      listenDurationMinutes: Math.min(240, Math.max(1, Number($('listenDuration').value) || 30)),
       scanIntervalSeconds: Math.min(300, Math.max(15, Number($('scanInterval').value) || 60)),
       greetingCap: Math.min(500, Math.max(0, Number($('greetingCap').value) || 0)),
       // 简历采集调参（合并自原简历采集控制台）
@@ -55,7 +55,7 @@
       $('enableGreeting').checked = config.modules?.greeting !== false;
       $('enableReply').checked = config.modules?.reply !== false;
       $('enableResume').checked = config.modules?.resume !== false;
-      $('listenDuration').value = config.listenDurationMinutes || 120;
+      $('listenDuration').value = config.listenDurationMinutes || 30;
       $('scanInterval').value = config.scanIntervalSeconds || 60;
       if (config.greetingCap != null) $('greetingCap').value = config.greetingCap;
       if (config.maxPerRun != null) $('rcMaxPerRun').value = config.maxPerRun;

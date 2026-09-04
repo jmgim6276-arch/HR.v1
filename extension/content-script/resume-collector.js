@@ -137,7 +137,7 @@
     const maxPerRun = Math.min(200, Math.max(1, Number(input?.maxPerRun) || 5));
     const intervalSeconds = Math.min(300, Math.max(60, Number(input?.intervalSeconds) || 60));
     const scanIntervalSeconds = Math.min(300, Math.max(15, Number(input?.scanIntervalSeconds) || 60));
-    const listenDurationMinutes = Math.min(240, Math.max(1, Number(input?.listenDurationMinutes) || 120));
+    const listenDurationMinutes = Math.min(240, Math.max(1, Number(input?.listenDurationMinutes) || 30));
     const actionDelaySeconds = Math.min(15, Math.max(4, Number(input?.actionDelaySeconds) || 4));
     const coordinatedMode = input?.coordinatedMode === true;
     const autoSendReply = input?.autoSendReply === true;
