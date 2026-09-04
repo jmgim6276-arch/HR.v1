@@ -120,8 +120,15 @@
    */
   async function deleteJob(id) {
     showConfirmDialog('确定要删除该岗位配置吗？', async () => {
+      const job = jobs.find(j => j.id === id);
       jobs = jobs.filter(j => j.id !== id);
       await saveJobs();
+      // 同步删除同名回复设置（审查 F4）：否则"删全部岗位"后 rpc 遗留启用条目会翻成幽灵白名单
+      try {
+        const r = await chrome.storage.local.get('replyPositionConfigs');
+        const list = (r.replyPositionConfigs || []).filter(c => (c.name || '') !== ((job && job.name) || ''));
+        await chrome.storage.local.set({ replyPositionConfigs: list });
+      } catch (e) { console.error(e); }
       renderJobs();
       showToast('✅ 已删除');
     });

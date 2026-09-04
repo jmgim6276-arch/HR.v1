@@ -612,18 +612,11 @@
 
   /* ─── 回复设置（按岗位定制自动回复引擎；UI 合一，引擎不动） ─── */
 
-  function setReplyCustomVisible(enabled) {
-    const body = document.getElementById('replyCustomBody');
-    if (body) body.style.display = enabled ? 'block' : 'none';
-  }
-
   function resetReplySettings() {
-    document.getElementById('replyCustomEnable').checked = false;
     document.getElementById('replyAutoLimit').value = 5;
     document.getElementById('replyKeywordReply').checked = true;
     document.getElementById('replyAiReply').checked = true;
     document.getElementById('replyKnowledgeBase').value = '';
-    setReplyCustomVisible(false);
   }
 
   /** 编辑岗位时，从 replyPositionConfigs 回显该岗位的回复设置（按岗位名匹配）。 */
@@ -635,18 +628,16 @@
       const list = result[REPLY_POSITION_CONFIGS_KEY] || [];
       const cfg = list.find(c => (c.name || '') === jobName);
       if (!cfg) return;
-      document.getElementById('replyCustomEnable').checked = cfg.enabled !== false;
       document.getElementById('replyAutoLimit').value = cfg.autoReplyLimit || 5;
       document.getElementById('replyKeywordReply').checked = cfg.keywordReply !== false;
       document.getElementById('replyAiReply').checked = cfg.aiReply !== false;
       document.getElementById('replyKnowledgeBase').value = cfg.positionKnowledgeBase || '';
-      setReplyCustomVisible(true);
     } catch (err) { console.error('加载回复设置失败:', err); }
   }
 
-  /** 读取回复设置区块。 */
+  /** 读取回复设置区块。enabled 恒 true：岗位是否参与自动回复由列表页开关决定（2026-09-02 拍板），此处仅采集设置项。 */
   function collectReplySettings() {
-    const enabled = document.getElementById('replyCustomEnable').checked === true;
+    const enabled = true;
     let limit = parseInt(document.getElementById('replyAutoLimit').value, 10);
     if (!Number.isInteger(limit) || limit < 1) limit = 5;
     if (limit > 20) limit = 20;
@@ -661,15 +652,15 @@
 
   /**
    * 双写 replyPositionConfigs（按岗位名）。
-   * 关键：未勾选定制且该岗位无现存条目时【不写】，保持回复引擎默认「全岗位」行为，
-   * 避免保存打招呼把引擎意外翻成「白名单」模式导致其它岗位不再自动回复。
+   * 2026-09-02 拍板：岗位是否参与自动回复由列表页开关（jobConfigs.enabled）决定，
+   * 本条目退化为按岗位名的回复设置存储（autoReplyLimit/keyword/AI/知识库），
+   * 故保存即 upsert 且 enabled 恒 true（该字段此后仅服务"jobConfigs 为空"的遗留回退）。
    */
   async function syncReplyPositionConfig(jobName, settings) {
     if (!jobName) return;
     const result = await chrome.storage.local.get(REPLY_POSITION_CONFIGS_KEY);
     const list = result[REPLY_POSITION_CONFIGS_KEY] || [];
     const idx = list.findIndex(c => (c.name || '') === jobName);
-    if (!settings.enabled && idx === -1) return; // 未定制且无条目：不动
     if (idx !== -1) {
       list[idx] = {
         ...list[idx],
@@ -910,11 +901,6 @@
 
     // 添加回复话术按钮
     document.getElementById('btnAddReplyMessage').addEventListener('click', () => addReplyMessage());
-
-    // 回复设置定制开关：显隐定制区
-    document.getElementById('replyCustomEnable').addEventListener('change', (e) => {
-      setReplyCustomVisible(e.target.checked);
-    });
   });
 
 })();

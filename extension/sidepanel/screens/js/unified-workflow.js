@@ -84,14 +84,23 @@
     const greetingByJob = new Map((stored.greetingConfigs || []).map(item => [item.jobId, item]));
     const greetingJobs = jobs.filter(job => greetingByJob.has(job.id));
     const greetingTarget = greetingJobs.reduce((sum, job) => sum + Math.max(0, Number(greetingByJob.get(job.id)?.greetCount) || 0), 0);
+    // 回复范围三态链（与 service-worker/reply-scope.mjs 同规则的内联副本，改动须同步）：
+    // jobConfigs 非空→白名单=启用的岗位（全关→待机）；空→回退 rpc 白名单；皆空→全岗位
+    const allJobs = stored.jobConfigs || [];
     const replyConfigs = (stored.replyPositionConfigs || []).filter(item => item.enabled !== false);
+    const replyScopeNames = allJobs.length
+      ? allJobs.filter(j => j && j.enabled !== false && j.name).map(j => j.name)
+      : replyConfigs.map(item => item.name).filter(Boolean);
+    const replyScopeText = replyScopeNames.length
+      ? replyScopeNames.join('、')
+      : (allJobs.length ? '待机（所有岗位配置均已关闭）' : '全部已发布岗位');
     const modules = [
       config.modules.greeting ? (
         config.greetingCap > 0
           ? `打招呼：开启（${greetingJobs.length} 个岗位，每轮 ${config.greetingCap} 人，打满后切沟通页监听，再循环）`
           : `打招呼：开启（${greetingJobs.length} 个岗位，每轮打到列表自然结束，计划上限 ${greetingTarget || '按岗位配置'} 人）`
       ) : '打招呼：关闭',
-      config.modules.reply ? `自动回复：开启（${replyConfigs.length ? replyConfigs.map(item => item.name).filter(Boolean).join('、') : '全部已发布岗位'}）` : '自动回复：关闭',
+      config.modules.reply ? `自动回复：开启（${replyScopeText}）` : '自动回复：关闭',
       config.modules.resume ? '简历采集：开启（监听全部有效简历请求，失败三次永久跳过）' : '简历采集：关闭',
     ];
     const approved = window.confirm([

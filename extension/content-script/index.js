@@ -266,7 +266,26 @@
   function Me() {
     return ($?.keywordRules || []).filter((e) => e.enabled !== !1);
   }
+  // 岗位范围三态链（2026-09-02 拍板：岗位列表开关=打招呼+自动回复总开关，编辑页"定制回复"勾选已废）。
+  // 与 service-worker/reply-scope.mjs 同规则的内联副本（本文件是经典脚本无法 import，改动须两边同步）：
+  // jobConfigs 非空→白名单=启用的岗位（同名 rpc 仅借 autoReplyLimit 等设置）；全关→空（start() 判待机）；
+  // jobConfigs 空→回退旧 rpc 白名单；皆空→start() 判全岗位兜底。
   function We() {
+    let i = $?.jobConfigs || [];
+    if (i.length > 0) {
+      let e = $?.replyPositionConfigs || [];
+      return i
+        .filter((t) => t && t.enabled !== !1 && t.name)
+        .map((t) => ({
+          ...(e.find(
+            (s) =>
+              normalizeReplyPositionName(s?.name) ===
+              normalizeReplyPositionName(t.name),
+          ) || {}),
+          name: t.name,
+          enabled: !0,
+        }));
+    }
     return ($?.replyPositionConfigs || []).filter((e) => e.enabled !== !1);
   }
   function normalizeReplyPositionName(i) {
@@ -819,7 +838,9 @@
         (this._runSegmentStart = 0),
         (this._maxDurationPaused = !1),
         (this._loopTimer = null),
-        (this._greetingTimer = null);
+        (this._greetingTimer = null),
+        (this._scopeNone = !1),
+        (this._scopeSig = "");
     }
     getDebugState() {
       let e = [];
@@ -846,14 +867,22 @@
         enabledPositionNames: [...this._enabledJobNames],
       };
     }
-    async start(e) {
-      (this.state = E.RUNNING),
-        this.onStatusReport(E.RUNNING, "\u542F\u52A8\u4E2D..."),
-        r("[Processor] \u5F15\u64CE\u542F\u52A8"),
-        await this._loadAchievedMaps();
+    // 范围签名：模式首字母 + 启用岗位名序列，供配置热更判断范围是否真的变了（防无关保存重启计划）。
+    _scopeSignature(s) {
+      return (
+        (s.length > 0 ? "W" : ($?.jobConfigs || []).length > 0 ? "N" : "A") +
+        "|" +
+        s.map((t) => t.name).join(",")
+      );
+    }
+    // 范围装配（三态链，2026-09-02 拍板：岗位列表开关=总开关）：start() 与配置热更 refreshReplyScope() 共用。
+    // 返回 false = 全岗位兜底拉取 BOSS 职位失败（已置 IDLE）。
+    async _setupScope() {
       let s = We();
+      this._scopeSig = this._scopeSignature(s);
       if (s.length > 0) {
-        (this._replyAllPositions = !1),
+        (this._scopeNone = !1),
+          (this._replyAllPositions = !1),
           (this._positionPlan = s.map((n) => ({
             ...n,
             autoReplyLimit: Math.min(
@@ -872,10 +901,27 @@
           this._sendRunningLog(
             `\u{1F3AF} \u767D\u540D\u5355\u6A21\u5F0F\uFF1A\u4EC5\u56DE\u590D ${[...this._enabledJobNames].join("\u3001")}`,
           );
+      } else if (($?.jobConfigs || []).length > 0) {
+        // 岗位配置存在但全部关闭 → 待机：不扫描、不入队、不回任何岗位（消掉旧"全关=全回"悖论）。
+        // 引擎保持 RUNNING 空转（页面零交互、不报 IDLE），编排器不会误判"意外停止"。
+        (this._scopeNone = !0),
+          (this._replyAllPositions = !1),
+          (this._positionPlan = []),
+          (this._positionPlanProcessed = new Set()),
+          (this._positionPlanConsecutiveFailures = 0),
+          (this._enabledJobNames = new Set()),
+          r(
+            "[Processor] 待机模式：所有岗位配置均已关闭，自动回复不处理任何岗位",
+          ),
+          this._sendRunningLog(
+            "⚠️ 所有岗位配置均已关闭，自动回复待机中（不处理任何岗位）",
+            "warn",
+          );
       } else
         try {
           let n = await Ue();
-          (this._replyAllPositions = !0),
+          (this._scopeNone = !1),
+            (this._replyAllPositions = !0),
             (this._enabledJobNames = new Set(n)),
             r(
               `[Processor] \u5168\u5C97\u4F4D\u6A21\u5F0F\uFF1A\u5DF2\u52A0\u8F7D ${n.length} \u4E2A BOSS \u5DF2\u53D1\u5E03\u804C\u4F4D: [${n.join(", ")}]`,
@@ -893,8 +939,48 @@
               `\u542F\u52A8\u5931\u8D25\uFF1A${n.message}`,
             ),
             (this.state = E.IDLE);
-          return;
+          return !1;
         }
+      return !0;
+    }
+    _kickoffRun() {
+      this._positionPlan.length > 0
+        ? ((this._positionPlanRunning = !0),
+          setTimeout(() => this._runPositionPlan(), 0))
+        : this._scheduleNext();
+    }
+    // 配置热更（CS_CONFIG_UPDATED，审查 F2 修复）：运行/暂停中改岗位开关即时生效——
+    // 全部关闭→即转待机（停扫描/拦入队/清队列）；待机中重开→即重建范围并恢复扫描。
+    // 范围签名没变 → 直接返回（防无关配置保存重启岗位计划）。暂停中只重装不 kickoff（resume 接管；
+    // 此时白名单暂失主动计划扫描、走被动回路，xe 门读最新 $ 范围仍正确，下次 start 恢复）。
+    async refreshReplyScope() {
+      if (this.state !== E.RUNNING && this.state !== E.PAUSED) return;
+      let s = We();
+      if (this._scopeSignature(s) === this._scopeSig) return;
+      let e = this._scopeNone;
+      this._loopTimer &&
+        (clearTimeout(this._loopTimer), (this._loopTimer = null)),
+        (this._positionPlanRunning = !1);
+      if (!(await this._setupScope())) return;
+      this._sendRunningLog(
+        this._scopeNone
+          ? "⚠️ 岗位开关已全部关闭，自动回复转入待机（不处理任何岗位）"
+          : e
+            ? "▶️ 岗位开关已重新开启，自动回复恢复运行"
+            : "▶️ 岗位配置已变更，自动回复范围已刷新",
+        "warn",
+      ),
+        this._scopeNone &&
+          this.userMessageQueues.forEach((t) => (t.length = 0)),
+        this.state === E.RUNNING && this._kickoffRun();
+    }
+
+    async start(e) {
+      (this.state = E.RUNNING),
+        this.onStatusReport(E.RUNNING, "\u542F\u52A8\u4E2D..."),
+        r("[Processor] \u5F15\u64CE\u542F\u52A8"),
+        await this._loadAchievedMaps();
+      if (!(await this._setupScope())) return;
       this._positionPlan.length === 0 && (await this._refreshNewGreetings()),
         (this._runCycleStartTime = Date.now()),
         this._autoPauseTimer &&
@@ -907,10 +993,7 @@
         `[Processor] \u25B6\uFE0F \u8FD0\u884C\u5468\u671F\u542F\u52A8\uFF0C\u8FDE\u7EED\u8FD0\u884C\u65F6\u957F\u4E0A\u9650 ${t} \u5206\u949F`,
       ),
         this.onStatusReport(E.RUNNING, "\u8FD0\u884C\u4E2D");
-      if (this._positionPlan.length > 0) {
-        this._positionPlanRunning = !0;
-        setTimeout(() => this._runPositionPlan(), 0);
-      } else this._scheduleNext();
+      this._kickoffRun();
     }
     pause() {
       this._accumulateRunTime(),
@@ -961,6 +1044,8 @@
         (this._replyAllPositions = !1),
         (this._positionPlan = []),
         (this._positionPlanRunning = !1),
+        (this._scopeNone = !1),
+        (this._scopeSig = ""),
         this._positionPlanProcessed.clear(),
         (this._positionPlanConsecutiveFailures = 0),
         this.sessionManager.clearAll(),
@@ -974,7 +1059,7 @@
         this.onStatusReport(E.IDLE, "\u5DF2\u505C\u6B62");
     }
     enqueueMessage(e) {
-      if (this.state === E.IDLE) return;
+      if (this.state === E.IDLE || this._scopeNone) return;
       let t = e.from?.uid;
       if (!t) return;
       let s = e.body?.type;
@@ -1003,6 +1088,7 @@
     }
     _scheduleNext() {
       this.state === E.RUNNING &&
+        !this._scopeNone &&
         (this._loopTimer = setTimeout(() => this._processLoop(), we));
     }
     _accumulateRunTime() {
@@ -5017,6 +5103,7 @@ ${d}`),
         let e = await ee();
         return (
           oe(!!e.devMode),
+          x && (await x.refreshReplyScope()),
           window.postMessage(
             {
               source: "BOSS_PLUGIN_CS",

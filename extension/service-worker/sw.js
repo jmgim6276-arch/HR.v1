@@ -1,3 +1,5 @@
+import { resolveReplyScope } from "./reply-scope.mjs";
+
 var R = {
     MODEL_CONFIG: "modelConfig",
     TIME_CONFIG: "timeConfig",
@@ -8970,11 +8972,23 @@ var cn = {
       let t = await chrome.storage.local.get([
           R.REPLY_POSITION_CONFIGS,
           R.KEYWORD_RULES,
+          R.JOB_CONFIGS,
         ]),
-        n = (t[R.REPLY_POSITION_CONFIGS] || []).filter((m) => m.enabled !== !1),
         a = (t[R.KEYWORD_RULES] || []).filter((m) => m.enabled !== !1),
-        l = n.length === 0;
-      l
+        // 岗位范围三态链（2026-09-02 拍板：岗位列表开关=总开关）：scope 为唯一判定源
+        scope = resolveReplyScope(t[R.JOB_CONFIGS], t[R.REPLY_POSITION_CONFIGS]),
+        standby = scope.mode === "none",
+        l = scope.mode === "all";
+      standby
+        ? (y(
+            "[SW] 待机模式：所有岗位配置均已关闭，回复引擎不处理任何岗位",
+          ),
+          he(
+            "reply",
+            "warn",
+            "⚠️ 所有岗位配置均已关闭，回复引擎将待机（不处理任何岗位）",
+          ))
+        : l
         ? (y(
             "[SW] \u5168\u5C97\u4F4D\u6A21\u5F0F\uFF1A\u6CA1\u6709\u542F\u7528\u7684\u5C97\u4F4D\u914D\u7F6E",
           ),
@@ -8984,18 +8998,18 @@ var cn = {
             "\u26A0\uFE0F \u5168\u5C97\u4F4D\u6A21\u5F0F\uFF1A\u5C06\u56DE\u590D BOSS \u6C9F\u901A\u4E2D\u7684\u6240\u6709\u5DF2\u53D1\u5E03\u5C97\u4F4D",
           ))
         : y(
-            `[SW] \u767D\u540D\u5355\u6A21\u5F0F\uFF1A\u5DF2\u542F\u7528\u5C97\u4F4D\u914D\u7F6E: ${n.map((m) => m.name).join(", ")}`,
+            `[SW] \u767D\u540D\u5355\u6A21\u5F0F\uFF1A\u5DF2\u542F\u7528\u5C97\u4F4D\u914D\u7F6E: ${scope.entries.map((m) => m.name).join(", ")}`,
           );
-      let o = l ? a.length > 0 : n.some((m) => m.keywordReply !== !1),
-        i = l ? !0 : n.some((m) => m.aiReply !== !1),
+      let o = l ? a.length > 0 : scope.entries.some((m) => m.keywordReply !== !1),
+        i = l ? !0 : scope.entries.some((m) => m.aiReply !== !1),
         c = l
           ? !1
-          : n.some(
+          : scope.entries.some(
               (m) =>
                 Array.isArray(m.greetingMessages) &&
                 m.greetingMessages.length > 0,
             );
-      if (!o && !i && !c) {
+      if (!standby && !o && !i && !c) {
         let m =
           "\u542F\u7528\u7684\u5C97\u4F4D\u914D\u7F6E\u4E2D\u6CA1\u6709\u5F00\u542F\u4EFB\u4F55\u56DE\u590D\u65B9\u5F0F\uFF08\u5173\u952E\u8BCD\u56DE\u590D/AI\u56DE\u590D/\u65B0\u62DB\u547C\u8BDD\u672F\uFF09";
         throw (
@@ -10155,15 +10169,29 @@ async function Gc(s) {
   console.log(
     "[SW] [\u8C03\u5EA6\u5668] \u914D\u7F6E\u5DF2\u52A0\u8F7D\uFF08\u5927\u6A21\u578B\u6258\u7BA1\u6A21\u5F0F\uFF09",
   );
-  let d = (
-    (await chrome.storage.local.get(R.REPLY_POSITION_CONFIGS))[
-      R.REPLY_POSITION_CONFIGS
-    ] || []
-  ).filter((_) => _.enabled !== !1);
-  let replyAllPositions = d.length === 0,
+  let scopeCfg = await chrome.storage.local.get([
+      R.REPLY_POSITION_CONFIGS,
+      R.JOB_CONFIGS,
+    ]),
+    scope2 = resolveReplyScope(
+      scopeCfg[R.JOB_CONFIGS],
+      scopeCfg[R.REPLY_POSITION_CONFIGS],
+    ),
+    d = scope2.entries,
+    replyStandby = scope2.mode === "none";
+  let replyAllPositions = scope2.mode === "all",
     h = replyAllPositions ? !0 : d.some((_) => _.aiReply !== !1),
     g = replyAllPositions ? !0 : d.some((_) => _.keywordReply !== !1);
-  replyAllPositions
+  replyStandby
+    ? (console.warn(
+        "[SW] [\u8C03\u5EA6\u5668] \u5F85\u673A\u6A21\u5F0F\uFF1A\u6240\u6709\u5C97\u4F4D\u914D\u7F6E\u5747\u5DF2\u5173\u95ED\uFF0C\u56DE\u590D\u5F15\u64CE\u4E0D\u5904\u7406\u4EFB\u4F55\u5C97\u4F4D",
+      ),
+      he(
+        "reply",
+        "warn",
+        "\u26A0\uFE0F \u6240\u6709\u5C97\u4F4D\u914D\u7F6E\u5747\u5DF2\u5173\u95ED\uFF0C\u56DE\u590D\u5F15\u64CE\u5C06\u5F85\u673A\uFF08\u4E0D\u5904\u7406\u4EFB\u4F55\u5C97\u4F4D\uFF09",
+      ))
+    : replyAllPositions
     ? (console.warn(
         "[SW] [\u8C03\u5EA6\u5668] \u5168\u5C97\u4F4D\u6A21\u5F0F\uFF1A\u6CA1\u6709\u542F\u7528\u7684\u5C97\u4F4D\u914D\u7F6E",
       ),

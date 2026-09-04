@@ -324,13 +324,10 @@
       </label>
     </div>
 
-    <!-- 回复设置（按岗位定制自动回复引擎；可选。不勾选则不改动回复配置，保持默认全岗位行为） -->
+    <!-- 回复设置（按岗位定制自动回复引擎参数；岗位是否参与自动回复由列表页开关决定——2026-09-02 拍板：开关=总开关，原"定制回复"勾选已废） -->
     <div class="form-section">
-      <div class="form-section-title">回复设置（自动回复引擎，可选）</div>
-      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
-        <input type="checkbox" id="replyCustomEnable" style="width:16px;height:16px;"> 为本岗位定制回复设置
-      </label>
-      <div id="replyCustomBody" style="display:none;margin-top:12px;">
+      <div class="form-section-title">回复设置（自动回复引擎）</div>
+      <div id="replyCustomBody" style="margin-top:12px;">
         <div class="field">
           <label for="replyAutoLimit">自动回复人数上限（1–20）</label>
           <input class="input" id="replyAutoLimit" type="number" min="1" max="20" value="5" style="max-width:140px;">

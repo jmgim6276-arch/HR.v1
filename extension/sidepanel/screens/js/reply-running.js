@@ -94,25 +94,56 @@
   }
 
   /**
+   * 岗位范围三态链（与 service-worker/reply-scope.mjs 同规则的内联副本——经典脚本无法 import，改动须同步）：
+   * ①jobConfigs 非空→白名单=启用的岗位（同名 rpc 借设置，NFKC/空白/大小写归一匹配）；全关→none 待机。
+   * ②jobConfigs 空 & rpc 有启用→旧白名单。③皆空→all 全岗位。
+   */
+  function resolveReplyScopeInline(jobConfigs, replyPositionConfigs) {
+    const jobs = Array.isArray(jobConfigs) ? jobConfigs : [];
+    const rpc = Array.isArray(replyPositionConfigs) ? replyPositionConfigs : [];
+    const norm = (s) =>
+      String(s || "").normalize("NFKC").replace(/\s+/g, "").toLowerCase();
+    if (jobs.length > 0) {
+      const entries = jobs
+        .filter((j) => j && j.enabled !== false && j.name)
+        .map((j) => ({
+          ...(rpc.find((c) => norm(c && c.name) === norm(j.name)) || {}),
+          name: j.name,
+          enabled: true,
+        }));
+      return { mode: entries.length ? "whitelist" : "none", entries };
+    }
+    const legacy = rpc.filter((c) => c && c.enabled !== false);
+    return legacy.length
+      ? { mode: "whitelist", entries: legacy }
+      : { mode: "all", entries: [] };
+  }
+
+  /**
    * 检查启动前置条件
-   * 有启用岗位时进入白名单模式；全部关闭时进入全岗位模式
+   * 范围按三态链：白名单（有启用岗位）/ 待机（岗位全部关闭，不回任何岗位）/ 全岗位（未配置岗位时兜底）
    * 附加条件：
    *   - 有岗位启用AI回复 → 大模型配置必须完整（apiUrl、apiKey、model）
    *   - 有岗位启用关键词回复 → 至少配置一条关键词规则
-   * @returns {{ canStart: boolean, reasons: string[], mode: 'all'|'whitelist' }} 检查结果和未满足的具体原因
+   * @returns {{ canStart: boolean, reasons: string[], mode: 'all'|'whitelist'|'none' }} 检查结果和未满足的具体原因
    */
   async function checkPreconditions() {
     const result = await chrome.storage.local.get([
       "replyPositionConfigs",
       "modelConfig",
       "keywordRules",
+      "jobConfigs",
     ]);
-    const positionConfigs = result.replyPositionConfigs || [];
-    const enabledConfigs = positionConfigs.filter((c) => c.enabled !== false);
+    const scope = resolveReplyScopeInline(
+      result.jobConfigs,
+      result.replyPositionConfigs,
+    );
+    const enabledConfigs = scope.entries;
     const enabledRules = (result.keywordRules || []).filter(
       (r) => r.enabled !== false,
     );
-    const allPositionsMode = enabledConfigs.length === 0;
+    const standbyMode = scope.mode === "none";
+    const allPositionsMode = scope.mode === "all";
 
     const reasons = [];
 
@@ -130,7 +161,7 @@
           Array.isArray(c.greetingMessages) && c.greetingMessages.length > 0,
       );
 
-    if (!anyAiReply && !anyKeywordReply && !anyGreeting) {
+    if (!standbyMode && !anyAiReply && !anyKeywordReply && !anyGreeting) {
       reasons.push(
         "所有启用的岗位配置均未开启任何回复方式（关键词回复/AI回复/新招呼话术）",
       );
@@ -161,7 +192,7 @@
     return {
       canStart: reasons.length === 0,
       reasons,
-      mode: allPositionsMode ? "all" : "whitelist",
+      mode: standbyMode ? "none" : allPositionsMode ? "all" : "whitelist",
     };
   }
 
@@ -175,6 +206,7 @@
       "replyPositionConfigs",
       "keywordRules",
       "modelConfig",
+      "jobConfigs",
     ]);
     const consent = result[PRIVACY_CONSENT_KEY] || {};
     if (consent.version !== PRIVACY_CONSENT_VERSION || !consent.acceptedAt) {
@@ -188,10 +220,13 @@
       return false;
     }
 
-    const enabledConfigs = (result.replyPositionConfigs || []).filter(
-      (config) => config.enabled !== false,
+    const scope = resolveReplyScopeInline(
+      result.jobConfigs,
+      result.replyPositionConfigs,
     );
-    const allPositions = enabledConfigs.length === 0;
+    const enabledConfigs = scope.entries;
+    const standby = scope.mode === "none";
+    const allPositions = scope.mode === "all";
     const positionNames = enabledConfigs
       .map((config) => config.name)
       .filter(Boolean);
@@ -214,9 +249,11 @@
     ).length;
     const aiEnabled =
       allPositions || enabledConfigs.some((config) => config.aiReply !== false);
-    const targetText = allPositions
-      ? "全部已发布岗位（岗位配置全部关闭时的默认模式）"
-      : positionLimits.map((item) => `${item.name}（最多 ${item.limit} 人）`).join("、");
+    const targetText = standby
+      ? "待机（所有岗位配置均已关闭，不处理任何岗位）"
+      : allPositions
+        ? "全部已发布岗位（未配置岗位时的默认模式）"
+        : positionLimits.map((item) => `${item.name}（最多 ${item.limit} 人）`).join("、");
     const strategy = [
       greetingCount > 0
         ? `岗位新招呼话术 ${greetingCount} 条`
@@ -301,10 +338,12 @@
     }
     addLog(
       "[系统]",
-      mode === "all"
-        ? "当前为全岗位模式：将处理沟通中的所有已发布岗位"
-        : "当前为岗位白名单模式：只处理已启用的岗位配置",
-      mode === "all" ? "log-warn" : "log-sys",
+      mode === "none"
+        ? "当前为待机模式：所有岗位配置均已关闭，不处理任何岗位"
+        : mode === "all"
+          ? "当前为全岗位模式：将处理沟通中的所有已发布岗位"
+          : "当前为岗位白名单模式：只处理已启用的岗位配置",
+      mode === "all" || mode === "none" ? "log-warn" : "log-sys",
     );
 
     // 步骤2：验证订阅有效性
