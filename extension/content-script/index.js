@@ -5005,6 +5005,18 @@ ${d}`),
         i.message?.includes("context invalidated"))
     );
   }
+  // 岗位开关热更（2026-09-02 补 F2 发射跳断点）：job-list 开关/编辑页/删除/复制都是直写 storage、
+  // 不走 cmd_save_config，CS_CONFIG_UPDATED 到不了——唯一覆盖一切写入方的触发点是 CS 直听 storage.onChanged。
+  // 范围签名（_scopeSig）不变则 refreshReplyScope 内部直接返回，无关写入不会惊动计划。
+  chrome.storage.onChanged.addListener((i, e) => {
+    "local" === e &&
+      (Object.prototype.hasOwnProperty.call(i, L.JOB_CONFIGS) ||
+        Object.prototype.hasOwnProperty.call(i, L.REPLY_POSITION_CONFIGS)) &&
+      (async () => {
+        await ee();
+        x && (await x.refreshReplyScope());
+      })();
+  });
   chrome.runtime.onMessage.addListener(async (i, e, t) => {
     try {
       let s = await ze(i);
