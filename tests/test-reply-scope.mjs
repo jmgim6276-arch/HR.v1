@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 // 岗位范围三态链（2026-09-02 拍板）：岗位列表开关 = 打招呼+自动回复总开关。
 // 直测 service-worker/reply-scope.mjs 的 resolveReplyScope —— sw.js 两处启动检查
@@ -67,6 +68,20 @@ const { resolveReplyScope } = await import('../extension/service-worker/reply-sc
   assert.equal(resolveReplyScope([], []).mode, 'all');
   assert.equal(resolveReplyScope(undefined, null).mode, 'all');
   assert.equal(resolveReplyScope([], [{ name: 'x', enabled: false }]).mode, 'all');
+}
+
+// ⑦ 旧“关键词回复/AI 回复”开关只保留存量字段兼容，不再显示或参与启动判断。
+{
+  const configHtml = readFileSync(new URL('../extension/sidepanel/screens/greeting-config.html', import.meta.url), 'utf8');
+  for (const id of ['replyKeywordReply', 'replyAiReply']) {
+    const inputAt = configHtml.indexOf(`id="${id}"`);
+    const hiddenLabelAt = configHtml.lastIndexOf('<label hidden', inputAt);
+    assert.ok(inputAt > 0 && hiddenLabelAt > 0 && inputAt - hiddenLabelAt < 300, `${id} 应在活跃配置页隐藏`);
+  }
+  const workerSource = readFileSync(new URL('../extension/service-worker/sw.js', import.meta.url), 'utf8');
+  const runningSource = readFileSync(new URL('../extension/sidepanel/screens/js/reply-running.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(workerSource, /keywordReply|aiReply/, '手动与定时启动不得再读取旧开关');
+  assert.doesNotMatch(runningSource, /keywordReply|aiReply/, '旧运行页不得再用旧开关拦截启动');
 }
 
 console.log('test-reply-scope: 全部断言通过');

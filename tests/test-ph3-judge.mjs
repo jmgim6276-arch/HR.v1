@@ -13,8 +13,9 @@ const ok = (cond, label) => { if (cond) { pass++; console.log('  ✅', label); }
 
 // 抽 normalizePositionName + matchJobByRules 的函数体，eval 成可调用对象
 function extractFn(name) {
-  const start = src.indexOf(`function ${name}(`);
+  let start = src.indexOf(`function ${name}(`);
   if (start < 0) throw new Error(`找不到函数 ${name}`);
+  if (src.slice(start - 6, start) === 'async ') start -= 6;
   // 从 start 起数花括号配对
   let i = src.indexOf('{', start), depth = 0, end = i;
   for (; i < src.length; i++) {
@@ -49,6 +50,44 @@ const isLocked = (ts) => ts && now - ts < WINDOW;
 ok(isLocked(now - 60 * 1000) === true, '1 分钟前回复过 → 幂等跳过');
 ok(isLocked(now - 30 * 60 * 1000) === false, '30 分钟前回复过 → 不锁（可回积压）');
 ok(!isLocked(0), '无记录 → 不锁');
+
+console.log('▶ 跨入口幂等领取');
+const lockStore = {};
+const chromeMock = {
+  storage: {
+    local: {
+      async get(key) { return { [key]: structuredClone(lockStore[key]) }; },
+      async set(values) { Object.assign(lockStore, structuredClone(values)); },
+    },
+  },
+};
+const lockFactory = new Function('chrome', `
+  const REPLY_IDEM_KEY = 'replyIdemLocks';
+  const REPLY_IDEM_WINDOW_MS = 10 * 60 * 1000;
+  let replyClaimQueue = Promise.resolve();
+  ${extractFn('serializeReplyClaim')}
+  ${extractFn('pruneReplyLocks')}
+  ${extractFn('claimReply')}
+  ${extractFn('releaseReply')}
+  return { claimReply, releaseReply };
+`);
+const { claimReply, releaseReply } = lockFactory(chromeMock);
+const concurrent = await Promise.all([claimReply('candidate_1'), claimReply('candidate_1')]);
+ok(concurrent.filter(item => item.ok).length === 1, '同一候选人两个入口并发 → 只有一个取得发送资格');
+const winner = concurrent.find(item => item.ok);
+ok((await claimReply('candidate_1')).ok === false, '同一候选人下一处理轮次 → 幂等跳过');
+ok((await releaseReply('candidate_1', winner.token)).ok === true, '发送完全失败 → 可释放本人领取的锁');
+ok((await claimReply('candidate_1')).ok === true, '释放失败发送锁后 → 允许重试');
+
+const mainSource = readFileSync(join(here, '../extension/content-script/index.js'), 'utf8');
+const mainClaimAt = mainSource.indexOf('action: "cmd_claim_reply"');
+const mainSendAt = mainSource.indexOf('await this._sendAndLog', mainClaimAt);
+ok(mainClaimAt > 0 && mainSendAt > mainClaimAt, '主回复入口在真实发送前领取幂等锁');
+const collectorSource = readFileSync(join(here, '../extension/content-script/resume-collector.js'), 'utf8');
+const collectorRouteAt = collectorSource.indexOf('async function routeToReplyJudgment');
+const collectorClaimAt = collectorSource.indexOf("action: 'cmd_claim_reply'", collectorRouteAt);
+const collectorSendAt = collectorSource.indexOf('sendReplyMessages(', collectorClaimAt);
+ok(collectorClaimAt > collectorRouteAt && collectorSendAt > collectorClaimAt, '采集器回复入口在真实发送前领取同一把锁');
 
 console.log(`\n结果：${pass} 通过，${fail} 失败`);
 process.exit(fail ? 1 : 0);

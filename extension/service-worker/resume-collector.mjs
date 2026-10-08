@@ -667,6 +667,50 @@ async function handlePanelCommand(action, data) {
 const GREETING_CONFIGS_KEY = 'greetingConfigs';
 const REPLY_IDEM_KEY = 'replyIdemLocks';
 const REPLY_IDEM_WINDOW_MS = 10 * 60 * 1000; // 只防 MQTT/扫描双触发的重复回，不挡正常多轮对话
+let replyClaimQueue = Promise.resolve();
+
+function serializeReplyClaim(operation) {
+  const current = replyClaimQueue.then(operation, operation);
+  replyClaimQueue = current.catch(() => {});
+  return current;
+}
+
+function pruneReplyLocks(locks, now) {
+  for (const key of Object.keys(locks)) {
+    if (now - Number(locks[key] || 0) > 24 * 3600 * 1000) delete locks[key];
+  }
+}
+
+async function claimReply(uid) {
+  const key = String(uid || '');
+  if (!key) return { ok: false, reason: '缺少 uid' };
+  return serializeReplyClaim(async () => {
+    const now = Date.now();
+    const stored = await chrome.storage.local.get(REPLY_IDEM_KEY);
+    const locks = stored[REPLY_IDEM_KEY] || {};
+    const last = Number(locks[key] || 0);
+    if (last && now - last < REPLY_IDEM_WINDOW_MS) {
+      return { ok: false, reason: '近期已自动回复，避免重复发送' };
+    }
+    locks[key] = now;
+    pruneReplyLocks(locks, now);
+    await chrome.storage.local.set({ [REPLY_IDEM_KEY]: locks });
+    return { ok: true, token: now };
+  });
+}
+
+async function releaseReply(uid, token) {
+  const key = String(uid || '');
+  if (!key || !token) return { ok: false };
+  return serializeReplyClaim(async () => {
+    const stored = await chrome.storage.local.get(REPLY_IDEM_KEY);
+    const locks = stored[REPLY_IDEM_KEY] || {};
+    if (Number(locks[key] || 0) !== Number(token)) return { ok: false };
+    delete locks[key];
+    await chrome.storage.local.set({ [REPLY_IDEM_KEY]: locks });
+    return { ok: true };
+  });
+}
 
 function normalizePositionName(value) {
   return String(value || '').toLowerCase().replace(/[\s·,，、/\\-]+/g, '');
@@ -751,15 +795,15 @@ async function handleJudgeUnreadReply(data = {}) {
 async function markReplied(uid) {
   const key = String(uid || '');
   if (!key) return { ok: false };
-  const stored = await chrome.storage.local.get(REPLY_IDEM_KEY);
-  const locks = stored[REPLY_IDEM_KEY] || {};
-  locks[key] = Date.now();
-  const now = Date.now();
-  for (const k of Object.keys(locks)) {
-    if (now - Number(locks[k] || 0) > 24 * 3600 * 1000) delete locks[k];
-  }
-  await chrome.storage.local.set({ [REPLY_IDEM_KEY]: locks });
-  return { ok: true };
+  return serializeReplyClaim(async () => {
+    const stored = await chrome.storage.local.get(REPLY_IDEM_KEY);
+    const locks = stored[REPLY_IDEM_KEY] || {};
+    const now = Date.now();
+    locks[key] = now;
+    pruneReplyLocks(locks, now);
+    await chrome.storage.local.set({ [REPLY_IDEM_KEY]: locks });
+    return { ok: true };
+  });
 }
 // ── Ph3 结束 ─────────────────────────────────────────────────────────
 
@@ -776,6 +820,18 @@ chrome.runtime.onConnect.addListener(port => {
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.action === 'cmd_claim_reply') {
+    claimReply(message.data?.uid)
+      .then(sendResponse)
+      .catch(err => sendResponse({ ok: false, reason: err.message }));
+    return true;
+  }
+  if (message?.action === 'cmd_release_reply') {
+    releaseReply(message.data?.uid, message.data?.token)
+      .then(sendResponse)
+      .catch(() => sendResponse({ ok: false }));
+    return true;
+  }
   if (message?.action === 'cmd_judge_unread_reply') {
     handleJudgeUnreadReply(message.data)
       .then(sendResponse)

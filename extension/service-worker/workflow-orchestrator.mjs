@@ -29,7 +29,7 @@ const PRIVACY_VERSION = '2026-07-29';
 const DEADLINE_ALARM = 'unified-workflow-deadline';
 const REPLY_RESTART_ALARM = 'unified-workflow-reply-restart';
 const RISK_PATTERN = /安全验证|操作频繁|访问过于频繁|账号异常|请完成验证|登录|订阅|页面结构|页面已离开|无法确认|内容脚本|网络异常/i;
-const GREETING_COMPLETE_PATTERN = /所有岗位已按顺序处理完成|全部岗位.*完成|处理完成/;
+const GREETING_COMPLETE_PATTERN = /所有岗位已按顺序处理完成|全部岗位.*完成|处理完成|无可用岗位配置/;
 const LISTEN_COMPLETE_PATTERN = /持续监听窗口已完成|监听.*完成/;
 // 回复活动信号：CS 回复引擎真实送出话术的日志以 📤 开头（index.js，全库唯一）；
 // ⏭️ 跳过类日志是规则已处理的判断，不算待办活动。
@@ -64,6 +64,7 @@ function defaultRuntime() {
     passStartedAt: 0,
     capStopPending: false,
     finalListen: false,
+    lastModuleStatus: {},
   };
 }
 
@@ -124,6 +125,16 @@ export function createWorkflowOrchestrator({
     if (runtime.logs.length > 200) runtime.logs.splice(0, runtime.logs.length - 200);
     broadcast('running_log', { ...item, taskType: 'workflow' });
     await persist();
+  }
+
+  async function logModuleStatus(module, label, data = {}) {
+    const text = String(data.statusText || '').trim();
+    const signature = `${data.state || ''}|${text}`;
+    runtime.lastModuleStatus ||= {};
+    if (!text || runtime.lastModuleStatus[module] === signature) return;
+    runtime.lastModuleStatus[module] = signature;
+    const level = data.state === 'paused' || RISK_PATTERN.test(text) ? 'warn' : 'info';
+    await log(`${label} 状态：${text}`, level);
   }
 
   async function update(patch) {
@@ -209,7 +220,7 @@ export function createWorkflowOrchestrator({
     if (runtime.config?.modules?.greeting) await runCommand('cmd_pause_greeting').catch(() => {});
     if (runtime.config?.modules?.reply) await runCommand('cmd_pause').catch(() => {});
     await update({ state: 'paused', pausedStage: stage, stage, pausedAt: Date.now(), statusText: `需人工处理：${reason}` });
-    await log(`⏸ 流水线已暂停：${reason}`, 'warn');
+    await log(`⏸ 流水线已暂停：${reason}。请处理 BOSS 页面后点击「一键继续」`, 'warn');
     return publicRuntime(runtime);
   }
 
@@ -221,15 +232,16 @@ export function createWorkflowOrchestrator({
         return;
       }
       await update({ state: 'running', stage: 'switching_to_chat', statusText: '正在切换到 BOSS 沟通页' });
-      await log('打招呼阶段结束，正在切换到沟通页');
+      await log('🌐 打招呼阶段结束，正在检查并切换到 BOSS 沟通页');
       await ensureChatPage();
+      await log('🌐 BOSS 沟通页已就绪，开始启动监听模块');
       await refreshModuleApprovals();
 
       if (runtime.config.modules.reply) {
         await update({ statusText: '正在启动自动回复' });
         await runCommand('cmd_start');
         runtime.moduleStates.reply = 'running';
-        await log('💬 自动回复已启动，消息将在简历采集期间排队');
+        await log('② 自动回复已启动：等待候选人新消息，简历采集期间自动排队');
       }
 
       if (runtime.config.modules.resume) {
@@ -247,7 +259,7 @@ export function createWorkflowOrchestrator({
           drivenByReply: runtime.config.modules.reply === true,
         });
         runtime.moduleStates.resume = 'running';
-        await log('📥 简历采集已启动；发现有效简历时将优先处理');
+        await log(`③ 简历采集已启动：每 ${runtime.config.scanIntervalSeconds} 秒检查一次，发现有效简历时优先处理`);
       }
 
       runtime.deadlineAt = Date.now() + runtime.config.listenDurationMinutes * 60 * 1000;
@@ -299,6 +311,7 @@ export function createWorkflowOrchestrator({
       await runCommand('cmd_start_greeting');
       runtime.moduleStates.greeting = 'running';
       await update({ statusText: `第 ${cycle} 轮：正在推荐牛人页面筛选、打招呼并索要简历` });
+      await log(`① 第 ${cycle} 轮打招呼已启动：等待岗位扫描和候选人筛选结果`);
     })().catch(async err => {
       await pauseForManual(err.message, 'greeting');
       throw err;
@@ -336,6 +349,7 @@ export function createWorkflowOrchestrator({
         await runCommand('cmd_start_greeting');
         runtime.moduleStates.greeting = 'running';
         await update({ statusText: '正在推荐牛人页面筛选、打招呼并索要简历' });
+        await log('① 打招呼已启动：等待岗位扫描和候选人筛选结果');
       } catch (err) {
         await pauseForManual(err.message, 'greeting');
         throw err;
@@ -495,6 +509,7 @@ export function createWorkflowOrchestrator({
     }
     if (message.action === 'greeting_status_report' && runtime.stage === 'greeting') {
       runtime.moduleStates.greeting = data.state || runtime.moduleStates.greeting;
+      await logModuleStatus('greeting', '① 打招呼', data);
       if (data.state === 'idle') {
         if (RISK_PATTERN.test(data.statusText || '')) await pauseForManual(data.statusText, 'greeting');
         else if (GREETING_COMPLETE_PATTERN.test(data.statusText || '') || runtime.capStopPending) {
@@ -517,16 +532,21 @@ export function createWorkflowOrchestrator({
       }
       return;
     }
-    // 回复活动：真实送出话术（📤）才刷新活动时间；跳过类日志不算待办
-    if (message.action === 'running_log' && runtime.stage === 'listening' && data.taskType === 'reply') {
-      if (REPLY_ACTIVITY_PATTERN.test(data.message || '')) {
+    if (message.action === 'running_log' && data.taskType !== 'workflow') {
+      if (runtime.stage === 'listening' && data.taskType === 'reply' && REPLY_ACTIVITY_PATTERN.test(data.message || '')) {
         runtime.lastActivityAt = Date.now();
-        await persist();
       }
+      const prefix = data.taskType === 'greeting' ? '① 打招呼' : data.taskType === 'resumeCollect' ? '③ 简历采集' : '② 自动回复';
+      await log(`${prefix}：${data.message || '状态更新'}`, data.level || 'info');
+      return;
+    }
+    if (message.action === 'rc_log') {
+      await log(`③ 简历采集：${data.message || '状态更新'}`, data.level || 'info');
       return;
     }
     if (message.action === 'status_report' && runtime.stage === 'listening') {
       runtime.moduleStates.reply = data.state || runtime.moduleStates.reply;
+      await logModuleStatus('reply', '② 自动回复', data);
       if (data.state === 'idle' && RISK_PATTERN.test(data.statusText || '')) {
         await pauseForManual(data.statusText, 'listening');
       } else if (data.state === 'idle' && runtime.config?.modules?.reply) {
@@ -557,6 +577,7 @@ export function createWorkflowOrchestrator({
     }
     if (message.action === 'rc_status_update' && ['listening', 'switching_to_chat'].includes(runtime.stage)) {
       runtime.moduleStates.resume = data.state || runtime.moduleStates.resume;
+      await logModuleStatus('resume', '③ 简历采集', data);
       // 采集活动：stats 累计值增长即视为有活
       const stats = data.stats || {};
       const statSum = (stats.collected || 0) + (stats.saved || 0) + (stats.updated || 0) + (stats.replied || 0);
@@ -576,7 +597,7 @@ export function createWorkflowOrchestrator({
   }
 
   chrome.runtime.onMessage.addListener(message => {
-    if (['greeting_status_report', 'status_report', 'rc_status_update', 'running_log', 'new_greeting_record'].includes(message?.action)) {
+    if (['greeting_status_report', 'status_report', 'rc_status_update', 'rc_log', 'running_log', 'new_greeting_record'].includes(message?.action)) {
       observeMessage(message).catch(err => console.error('[Workflow] 状态处理失败:', err));
     }
     return false;

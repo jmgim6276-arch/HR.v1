@@ -1024,12 +1024,26 @@
     }
     const validation = await chrome.runtime.sendMessage({ action: 'cmd_validate_subscription' });
     if (!validation?.valid) throw new Error(validation?.message || validation?.error || '登录或订阅已失效');
+    const claim = await sendRuntime({ action: 'cmd_claim_reply', data: { uid } });
+    if (!claim?.ok) {
+      runtime.stats.skipped++;
+      log(`⏭ ${meta.name || '该候选人'}：${claim?.reason || '近期已自动回复，避免重复发送'}`, 'info');
+      return { outcome: 'skip_reply', meta };
+    }
     setStage('route_reply_send', meta);
-    const replied = await sendReplyMessages({ name: meta.name, position: meta.position }, meta, verdict.replyMessages);
+    let replied = false;
+    try {
+      replied = await sendReplyMessages({ name: meta.name, position: meta.position }, meta, verdict.replyMessages);
+    } catch (err) {
+      await sendRuntime({ action: 'cmd_release_reply', data: { uid, token: claim.token } }).catch(() => {});
+      throw err;
+    }
     if (replied) {
       runtime.stats.replied++;
       await sendRuntime({ action: 'cmd_mark_replied', data: { uid } });
       log(`📤 积压回复 → ${meta.name || '候选人'}：岗位「${verdict.jobName || ''}」${verdict.replyMessages.length} 条话术`);
+    } else {
+      await sendRuntime({ action: 'cmd_release_reply', data: { uid, token: claim.token } }).catch(() => {});
     }
     return { outcome: replied ? 'replied' : 'skip_reply', meta };
   }
