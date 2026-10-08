@@ -157,7 +157,7 @@ renewed_end = core.datetime.fromisoformat(renewed["ends_at"])
 check("管理员续费从当前到期日顺延 90 天",
       abs((renewed_end - weekly_end).total_seconds() - 90 * 86400) < 1)
 
-# 账号配置云同步：白名单、API Key 排除、按用户隔离和修订号冲突。
+# 账号配置云同步：白名单、历史凭证排除、按用户隔离和修订号冲突。
 settings_v1 = core.put_user_settings(
     user_b["id"],
     {
@@ -171,8 +171,8 @@ settings_v1 = core.put_user_settings(
         "replyScheduledTasks": [{
             "id": "task_1",
             "enabled": True,
-            "scopeApprovedAt": "2026-07-29T08:00:00Z",
-            "privacyVersion": "2026-07-29",
+            "scopeApprovedAt": "2026-10-08T08:00:00Z",
+            "privacyVersion": "2026-10-08",
             "recipientScope": "must-remain-device-local",
         }],
         "talentPool": [{"name": "不应上传的人才"}],
@@ -186,7 +186,7 @@ check(
 )
 saved_settings = core.get_user_settings(user_b["id"])
 check(
-    "云端配置只保留白名单且剔除 API Key",
+    "云端配置只保留白名单且剔除历史凭证",
     saved_settings["settings"]["modelConfig"]["model"] == "model-test"
     and "apiKey" not in saved_settings["settings"]["modelConfig"]
     and "scopeApprovedAt"

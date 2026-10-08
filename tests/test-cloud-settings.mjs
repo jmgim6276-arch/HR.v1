@@ -141,7 +141,7 @@ globalThis.__cloudSettingsTest = {
 );
 const sync = context.__cloudSettingsTest;
 
-// 旧版本首次升级：本地设置自动归入当前账号，API Key 不上传。
+// 旧版本首次升级：本地设置自动归入当前账号，历史凭证字段不上传。
 Object.assign(data, {
   profileAuth: { accessToken: "tokenA" },
   jobConfigs: [{ id: "jobA", name: "会计" }],
@@ -159,7 +159,7 @@ assert.equal(cloud.get("userA").settings.modelConfig.apiKey, undefined);
 assert.equal(cloud.get("userA").settings.talentPool, undefined);
 assert.equal(data.modelConfig.apiKey, "device-key-A");
 
-// 同一浏览器切换账号：云端配置切换，不能复制上一账号配置或 API Key。
+// 同一浏览器切换账号：云端配置切换，不能复制上一账号配置或历史凭证。
 cloud.set("userB", {
   settings: {
     jobConfigs: [{ id: "jobB", name: "审计" }],
@@ -173,7 +173,7 @@ await sync.syncCloudSettingsForLogin("tokenB", profiles.tokenB);
 assert.equal(data.jobConfigs[0].id, "jobB");
 assert.equal(data.modelConfig.apiKey, "");
 
-// 切回账号 A：恢复账号 A 的云端配置和当前设备为 A 保存的 API Key。
+// 切回账号 A：恢复账号 A 的云端配置和当前设备为 A 保存的历史凭证。
 data.profileAuth = { accessToken: "tokenA" };
 await sync.syncCloudSettingsForLogin("tokenA", profiles.tokenA);
 assert.equal(data.jobConfigs[0].id, "jobA");
@@ -208,4 +208,4 @@ await sync.syncCloudSettingsForLogin("tokenC", profiles.tokenC);
 assert.deepEqual(cloud.get("userC").settings, {});
 assert.equal(data.jobConfigs, undefined);
 
-console.log("✅ 云同步首次迁移、账号隔离、API Key 本地保留与 revision 上传全部通过");
+console.log("✅ 云同步首次迁移、账号隔离、历史凭证不上传与 revision 上传全部通过");

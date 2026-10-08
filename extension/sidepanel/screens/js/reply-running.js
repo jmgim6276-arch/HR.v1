@@ -3,7 +3,7 @@
 
   let automationState = "idle";
   const PRIVACY_CONSENT_KEY = "privacyConsent";
-  const PRIVACY_CONSENT_VERSION = "2026-07-29";
+  const PRIVACY_CONSENT_VERSION = "2026-10-08";
   const AUTOMATION_APPROVAL_KEY = "replyAutomationApproval";
 
   // 用文本节点渲染日志正文：候选人昵称/消息是不可信内容，

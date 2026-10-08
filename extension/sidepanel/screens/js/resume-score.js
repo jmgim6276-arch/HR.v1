@@ -2,7 +2,7 @@
  * resume-score.js —— 人才库简历打分视图
  *
  * 入库的简历由采集器自动打分（resumeRaw + 该岗位 JD），本页展示分数并支持单条重打。
- * 重打复用 SW 的 cmd_score_resume（VIP 校验 + BYOK 大模型），结果写回人才库该条记录。
+ * 重打复用 SW 的 cmd_score_resume（VIP 与点数校验 + 托管大模型），结果写回人才库该条记录。
  */
 (function () {
   'use strict';

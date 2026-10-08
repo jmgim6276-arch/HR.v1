@@ -1,7 +1,7 @@
 /**
  * 岗位配置启动器（合并面板）。
- * 两张卡片分别跳转 打招呼配置(job-list) / 回复配置(reply-position-config)。
- * 通过 shell 的 NAVIGATE 消息让 content-frame 整页跳转，保留各页内部后续导航。
+ * 通过岗位配置卡片进入统一的 job-list 页面。
+ * 使用 shell 的 NAVIGATE 消息让 content-frame 整页跳转。
  */
 (function () {
   'use strict';

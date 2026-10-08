@@ -8048,7 +8048,7 @@ async function getInstallationId() {
   return installationIdPromise;
 }
 const PRIVACY_CONSENT_KEY = "privacyConsent",
-  PRIVACY_CONSENT_VERSION = "2026-07-29";
+  PRIVACY_CONSENT_VERSION = "2026-10-08";
 async function requireCurrentPrivacyConsent() {
   let consent = (await chrome.storage.local.get(PRIVACY_CONSENT_KEY))[
     PRIVACY_CONSENT_KEY
@@ -8242,7 +8242,7 @@ async function cloudSettingsPutRequest(s, e) {
 }
 
 // ── 账号配置云同步 ─────────────────────────────────────
-// 只同步招聘配置；API Key、人才库、认证信息和运行状态始终留在本机。
+// 只同步招聘配置；人才库、认证信息和运行状态始终留在本机。
 const CLOUD_SETTINGS_KEYS = [
     "modelConfig",
     "timeConfig",

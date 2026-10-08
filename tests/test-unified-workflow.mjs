@@ -4,10 +4,10 @@ import fs from 'node:fs';
 const store = {
   unifiedWorkflowApproval: {
     approvedAt: new Date().toISOString(),
-    privacyVersion: '2026-07-29',
+    privacyVersion: '2026-10-08',
   },
-  greetingAutomationApproval: { approvedAt: new Date().toISOString(), privacyVersion: '2026-07-29' },
-  replyAutomationApproval: { approvedAt: new Date().toISOString(), privacyVersion: '2026-07-29' },
+  greetingAutomationApproval: { approvedAt: new Date().toISOString(), privacyVersion: '2026-10-08' },
+  replyAutomationApproval: { approvedAt: new Date().toISOString(), privacyVersion: '2026-10-08' },
 };
 const runtimeListeners = [];
 const alarmListeners = [];
@@ -94,9 +94,9 @@ const waitForRestart = () => new Promise(resolve => setTimeout(resolve, 900));
 const waitForTransition = () => new Promise(resolve => setTimeout(resolve, 3500));
 const approve = () => {
   const now = new Date().toISOString();
-  store.unifiedWorkflowApproval = { approvedAt: now, privacyVersion: '2026-07-29' };
-  store.greetingAutomationApproval = { approvedAt: now, privacyVersion: '2026-07-29' };
-  store.replyAutomationApproval = { approvedAt: now, privacyVersion: '2026-07-29' };
+  store.unifiedWorkflowApproval = { approvedAt: now, privacyVersion: '2026-10-08' };
+  store.greetingAutomationApproval = { approvedAt: now, privacyVersion: '2026-10-08' };
+  store.replyAutomationApproval = { approvedAt: now, privacyVersion: '2026-10-08' };
 };
 
 // 关闭打招呼时应直接进入沟通页，并协调启动自动回复与简历采集。
