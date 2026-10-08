@@ -127,6 +127,15 @@
     }
     return `fp_${Math.abs(n).toString(36)}`;
   }
+  function buildReplyMessageKey(i, e) {
+    let t = [...(Array.isArray(e) ? e : [])]
+      .reverse()
+      .find((s) => String(s?.from?.uid || "") === String(i || ""));
+    if (!t) return "";
+    if (t.mid) return `mid_${t.mid}`;
+    if (t.__replyMessageKey) return String(t.__replyMessageKey);
+    return Ee(i, t.body?.text || `type:${t.body?.type || ""}`, t.time || 0);
+  }
   function Se(i, e = null) {
     try {
       return JSON.parse(i);
@@ -1539,14 +1548,23 @@
           await this._handoffToCollector(s.uid, s.name);
           return !1;
         }
-        l = [
-          {
+        let g = (await qe(s.uid)).messages || [],
+          p = g.find(
+            (y) =>
+              String(y?.from?.uid || "") === String(s.uid) &&
+              String(y?.body?.text || "").trim() === String(f).trim(),
+          );
+        l = p
+          ? [{ ...p, __visibleDom: !0 }]
+          : [
+            {
             from: { uid: s.uid, name: s.name || "", avatar: s.avatar || "" },
             body: { type: 1, text: f, jobDesc: { title: u } },
             time: Date.now() - Ce() - 1e3,
+            __replyMessageKey: Ee(s.uid, f, 0),
             __visibleDom: !0,
           },
-        ];
+          ];
         this.userMessageQueues.set(s.uid, l),
           this.lastMessageTime.set(s.uid, l[0].time);
       } else l.forEach((f) => (f.__visibleDom = !0));
@@ -1938,26 +1956,62 @@
           (t.length = 0);
         return;
       }
-      for (let si = 0; si < replies.length; si++)
-        await this._sendAndLog(e, replies[si], "hr"),
+      let replyMessageKey = buildReplyMessageKey(e, o);
+      if (!replyMessageKey) {
+        this._sendRunningLog(`⚠️ 跳过 ${u || "候选人"}：无法识别候选人消息，避免重复发送`, "warn"),
+          await this._upsertRecord(e, o, b, p, f),
+          (t.length = 0);
+        return;
+      }
+      let replyClaim;
+      try {
+        replyClaim = await chrome.runtime.sendMessage({
+          action: "cmd_claim_reply",
+          data: { uid: String(e), messageKey: replyMessageKey },
+        });
+      } catch (claimError) {
+        this._sendRunningLog(`⚠️ 跳过 ${u || "候选人"}：无法确认是否已回复（${claimError.message || "幂等锁异常"}）`, "warn"),
+          await this._upsertRecord(e, o, b, p, f),
+          (t.length = 0);
+        return;
+      }
+      if (!replyClaim?.ok) {
+        this._sendRunningLog(`⏭️ 跳过 ${u || "候选人"}：${replyClaim?.reason || "近期已自动回复，避免重复发送"}`),
+          await this._upsertRecord(e, o, b, p, f),
+          (t.length = 0);
+        return;
+      }
+      let sentCount = 0;
+      try {
+        for (let si = 0; si < replies.length; si++) {
+          (await this._sendAndLog(e, replies[si], "hr")) && (sentCount += 1);
           si < replies.length - 1 && (await m(ie() * 1e3));
+        }
+      } catch (sendError) {
+        if (sentCount === 0)
+          await chrome.runtime.sendMessage({
+            action: "cmd_release_reply",
+            data: { uid: String(e), messageKey: replyMessageKey, token: replyClaim.token },
+          }).catch(() => {});
+        throw sendError;
+      }
+      if (sentCount === 0) {
+        await chrome.runtime.sendMessage({
+          action: "cmd_release_reply",
+          data: { uid: String(e), messageKey: replyMessageKey, token: replyClaim.token },
+        }).catch(() => {});
+        t.length = 0;
+        return;
+      }
       this._sendRunningLog(`📤 自动回复 → ${u || "候选人"}：岗位「${matchedJob.job.jobName || f}」${replies.length} 条话术`),
         await this._upsertRecord(e, o, b, p, f);
-      // Ph3：MQTT 实时回复成功后落 per-uid 幂等锁，供"扫积压"侧去重（两路同门）
-      try {
-        chrome.storage.local.get("replyIdemLocks").then((s) => {
-          let L = s.replyIdemLocks || {};
-          L[String(e)] = Date.now();
-          chrome.storage.local.set({ replyIdemLocks: L }).catch(() => {});
-        }).catch(() => {});
-      } catch (_) {}
       (t.length = 0),
         this._sendRunningLog(
           `\u2705 \u5DF2\u5B8C\u6210 ${u} \u7684\u6C9F\u901A\u8BB0\u5F55`,
         );
     }
     async _sendAndLog(e, t, s = "hr") {
-      if (this.state !== E.RUNNING) return;
+      if (this.state !== E.RUNNING) return !1;
       let n = this._userNameCache.get(e) || "",
         o = ie() * 1e3,
         u = (o / 1e3).toFixed(1);
@@ -1971,9 +2025,10 @@
         await m(o),
         this.state !== E.RUNNING)
       )
-        return;
+        return !1;
       let c = this._userAvatarCache.get(e) || "";
       await He(e, t, n, { avatar: c, skipSearch: !0 });
+      return !0;
     }
     _splitReply(e) {
       return e

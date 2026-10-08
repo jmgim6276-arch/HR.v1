@@ -7,7 +7,7 @@
 
   const TASKS_KEY = "greetingScheduledTasks";
   const JOBS_KEY = "jobConfigs";
-  const PRIVACY_VERSION = "2026-07-29";
+  const PRIVACY_VERSION = "2026-10-08";
   let tasks = [];
   let allJobs = [];
   let editingTaskId = null;

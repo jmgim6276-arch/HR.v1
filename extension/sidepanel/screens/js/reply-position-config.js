@@ -454,11 +454,6 @@
     const cfg = configs[index];
     if (!cfg) return;
 
-    const tags = [];
-    if (cfg.keywordReply === true) tags.push('关键词回复');
-    if (cfg.aiReply !== false) tags.push('AI 回复');
-    if (tags.length === 0) tags.push('未配置回复方式');
-
     const hasGreeting = Array.isArray(cfg.greetingMessages) && cfg.greetingMessages.length > 0;
 
     const detailHtml = `
@@ -476,7 +471,7 @@
       </div>
       <div class="field" style="margin-bottom:12px">
         <label style="font-weight:600;font-size:13px;margin-bottom:4px">回复方式</label>
-        <div style="font-size:14px">${tags.join('、')}</div>
+        <div style="font-size:14px">静态话术（大模型仅判断是否值得回复）</div>
       </div>
       <div class="field" style="margin-bottom:12px">
         <label style="font-weight:600;font-size:13px;margin-bottom:4px">岗位知识库</label>

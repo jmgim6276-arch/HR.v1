@@ -326,16 +326,16 @@
 
     <!-- 回复设置（按岗位定制自动回复引擎参数；岗位是否参与自动回复由列表页开关决定——2026-09-02 拍板：开关=总开关，原"定制回复"勾选已废） -->
     <div class="form-section">
-      <div class="form-section-title">回复设置（自动回复引擎）</div>
+      <div class="form-section-title">自动回复设置</div>
       <div id="replyCustomBody" style="margin-top:12px;">
         <div class="field">
           <label for="replyAutoLimit">自动回复人数上限（1–20）</label>
           <input class="input" id="replyAutoLimit" type="number" min="1" max="20" value="5" style="max-width:140px;">
         </div>
-        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:8px;">
+        <label hidden style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:8px;">
           <input type="checkbox" id="replyKeywordReply" style="width:16px;height:16px;" checked> 关键词回复
         </label>
-        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:12px;">
+        <label hidden style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:12px;">
           <input type="checkbox" id="replyAiReply" style="width:16px;height:16px;" checked> 大模型回复
         </label>
         <div class="field">
@@ -344,7 +344,7 @@
         </div>
       </div>
       <div style="font-size: 11px; color: var(--muted); margin-top: 8px; line-height: 1.6;">
-        💡 不勾选时本岗位沿用默认「全岗位」回复行为（用上面的自动回复话术），无需任何配置；勾选后可单独设定上限、回复方式与知识库。注意：一旦为任一岗位定制，自动回复即切换为「按岗位白名单」模式，未定制的岗位将不再自动回复。
+        💡 岗位列表开关决定本岗位是否参与自动回复；系统使用上方静态话术发送，大模型仅判断候选人的消息是否值得回复。
       </div>
     </div>
 

@@ -3,7 +3,7 @@
 
   let automationState = "idle";
   const PRIVACY_CONSENT_KEY = "privacyConsent";
-  const PRIVACY_CONSENT_VERSION = "2026-07-29";
+  const PRIVACY_CONSENT_VERSION = "2026-10-08";
   const AUTOMATION_APPROVAL_KEY = "replyAutomationApproval";
 
   // 用文本节点渲染日志正文：候选人昵称/消息是不可信内容，
@@ -122,70 +122,34 @@
   /**
    * 检查启动前置条件
    * 范围按三态链：白名单（有启用岗位）/ 待机（岗位全部关闭，不回任何岗位）/ 全岗位（未配置岗位时兜底）
-   * 附加条件：
-   *   - 有岗位启用AI回复 → 大模型配置必须完整（apiUrl、apiKey、model）
-   *   - 有岗位启用关键词回复 → 至少配置一条关键词规则
+   * 非待机模式固定使用大模型判断是否值得回复，因此只校验托管点数。
    * @returns {{ canStart: boolean, reasons: string[], mode: 'all'|'whitelist'|'none' }} 检查结果和未满足的具体原因
    */
   async function checkPreconditions() {
     const result = await chrome.storage.local.get([
       "replyPositionConfigs",
-      "modelConfig",
-      "keywordRules",
       "jobConfigs",
     ]);
     const scope = resolveReplyScopeInline(
       result.jobConfigs,
       result.replyPositionConfigs,
     );
-    const enabledConfigs = scope.entries;
-    const enabledRules = (result.keywordRules || []).filter(
-      (r) => r.enabled !== false,
-    );
     const standbyMode = scope.mode === "none";
     const allPositionsMode = scope.mode === "all";
 
     const reasons = [];
 
-    // 检查是否有有效的回复方式
-    // 全岗位模式沿用原逻辑：有关键词规则时先匹配关键词，其余消息交给AI。
-    const anyAiReply =
-      allPositionsMode || enabledConfigs.some((c) => c.aiReply !== false);
-    const anyKeywordReply = allPositionsMode
-      ? enabledRules.length > 0
-      : enabledConfigs.some((c) => c.keywordReply !== false);
-    const anyGreeting =
-      !allPositionsMode &&
-      enabledConfigs.some(
-        (c) =>
-          Array.isArray(c.greetingMessages) && c.greetingMessages.length > 0,
-      );
-
-    if (!standbyMode && !anyAiReply && !anyKeywordReply && !anyGreeting) {
-      reasons.push(
-        "所有启用的岗位配置均未开启任何回复方式（关键词回复/AI回复/新招呼话术）",
-      );
-    }
-
-    // 有岗位启用AI回复 → 校验托管点数余额（密钥在服务端，余额<=0 则拒启动）
-    if (anyAiReply) {
+    if (!standbyMode) {
       try {
         const resp = await chrome.runtime.sendMessage({ command: 'cmd_get_billing_balance' });
         const bal = resp && resp.ok ? resp.balance : null;
         if (bal && Number(bal.balance_points) <= 0) {
           reasons.push(
-            "有岗位启用「AI回复」但点数不足，请先到「大模型（托管）」页充值",
+            "自动回复判断所需点数不足，请先到「大模型（托管）」页充值",
           );
         }
       } catch (_) {
         // 余额查询失败（网络/未登录）不阻断启动，由调用时断粮标记兜底
-      }
-    }
-
-    // 有岗位启用关键词回复 → 校验关键词规则配置
-    if (anyKeywordReply) {
-      if (enabledRules.length === 0) {
-        reasons.push("有岗位启用「关键词回复」但未配置关键词规则");
       }
     }
 
@@ -204,8 +168,6 @@
     const result = await chrome.storage.local.get([
       PRIVACY_CONSENT_KEY,
       "replyPositionConfigs",
-      "keywordRules",
-      "modelConfig",
       "jobConfigs",
     ]);
     const consent = result[PRIVACY_CONSENT_KEY] || {};
@@ -236,31 +198,12 @@
         name: config.name,
         limit: Math.min(20, Math.max(1, Number(config.autoReplyLimit) || 5)),
       }));
-    const greetingCount = enabledConfigs.reduce(
-      (count, config) =>
-        count +
-        (Array.isArray(config.greetingMessages)
-          ? config.greetingMessages.filter(Boolean).length
-          : 0),
-      0,
-    );
-    const keywordCount = (result.keywordRules || []).filter(
-      (rule) => rule.enabled !== false,
-    ).length;
-    const aiEnabled =
-      allPositions || enabledConfigs.some((config) => config.aiReply !== false);
     const targetText = standby
       ? "待机（所有岗位配置均已关闭，不处理任何岗位）"
       : allPositions
         ? "全部已发布岗位（未配置岗位时的默认模式）"
         : positionLimits.map((item) => `${item.name}（最多 ${item.limit} 人）`).join("、");
-    const strategy = [
-      greetingCount > 0
-        ? `岗位新招呼话术 ${greetingCount} 条`
-        : "无岗位新招呼话术",
-      keywordCount > 0 ? `关键词规则 ${keywordCount} 条` : "无关键词规则",
-      aiEnabled ? "AI 回复已启用" : "AI 回复已关闭",
-    ].join("；");
+    const strategy = "发送岗位配置中的静态自动回复话术；大模型仅判断候选人消息是否值得回复";
 
     const approved = window.confirm(
       [
@@ -271,9 +214,7 @@
           ? "接收人范围：BOSS 沟通列表中已发布岗位的新消息候选人。"
           : "执行方式：按岗位配置从上到下依次选择岗位，并按页面顺序处理未读候选人；达到该岗位人数上限后切换下一岗位。",
         `话术来源：${strategy}`,
-        aiEnabled
-          ? "数据处理：生成 AI 回复时，必要的岗位、简历和聊天上下文会发送至您配置的 AI 服务商。"
-          : "数据处理：本次不调用 AI，仅使用本地配置的话术与规则。",
+        "数据处理：判断是否需要回复时，岗位和候选人的最新消息会发送至托管大模型。",
         "",
         "确认后将按照已配置的拟人频率自动运行，无需逐条确认。是否启动？",
       ].join("\n"),
@@ -288,9 +229,6 @@
         positions: positionNames,
         positionLimits,
         recipientScope: "incoming-candidates-for-approved-positions",
-        greetingCount,
-        keywordCount,
-        aiEnabled,
       },
     });
     return true;

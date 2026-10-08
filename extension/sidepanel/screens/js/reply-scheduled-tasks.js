@@ -2,7 +2,7 @@
   "use strict";
 
   const TASKS_KEY = "replyScheduledTasks";
-  const PRIVACY_VERSION = "2026-07-29";
+  const PRIVACY_VERSION = "2026-10-08";
   let tasks = [];
   let editingTaskId = null;
 

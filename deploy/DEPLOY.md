@@ -1,5 +1,7 @@
 # 上云部署手册（systemd + Nginx + HTTPS）
 
+> 本文是新环境部署模板，不代表当前线上状态。现役后端地址是 `https://hr.uf-tree.com`，生产目录记录为 `/www/wwwroot/zhipin-backend`；任何部署前先在服务器核对实际进程、环境变量和数据库备份。
+
 把后端从"本地手动跑"变成"云服务器上常驻、开机自启、HTTPS 加密"。
 全程约 20-30 分钟。命令都在**服务器**上执行（先 `ssh` 上去）。
 
@@ -115,8 +117,8 @@ sudo certbot renew --dry-run              # 测试证书自动续期
 
 ## 只更新隐私政策与后端入口（不覆盖会员数据库）
 
-> ⚠️ 路径注意：本节目录模板写于初次部署（ubuntu/home）。现役生产是宝塔环境，
-> 真实路径为 `/www/wwwroot/zhipin-backend`（root 登录）——照 CLAUDE.md「运行态」一节为准。
+> ⚠️ 路径注意：本节目录模板写于初次部署（ubuntu/home）。现役生产记录为宝塔环境，
+> 真实路径为 `/www/wwwroot/zhipin-backend`（root 登录）；部署前必须登录服务器再次确认。
 
 当线上 `/privacy` 返回 404、但本地 `backend/main.py` 已有该路由时，说明云服务器仍在运行旧代码。
 在项目根目录执行下面的上传命令，把 `服务器IP` 和 SSH 用户按实际情况替换：

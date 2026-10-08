@@ -7,7 +7,7 @@
 
   const SWITCH_KEY = "greetingTaskSwitch";
   const PRIVACY_CONSENT_KEY = "privacyConsent";
-  const PRIVACY_CONSENT_VERSION = "2026-07-29";
+  const PRIVACY_CONSENT_VERSION = "2026-10-08";
   const AUTOMATION_APPROVAL_KEY = "greetingAutomationApproval";
   let automationState = "idle";
 

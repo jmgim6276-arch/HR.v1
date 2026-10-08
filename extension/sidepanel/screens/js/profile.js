@@ -11,7 +11,7 @@
   const AUTH_KEY = "profileAuth";
   const SUBSCRIPTION_KEY = "profileSubscription";
   const PRIVACY_CONSENT_KEY = "privacyConsent";
-  const PRIVACY_CONSENT_VERSION = "2026-07-29";
+  const PRIVACY_CONSENT_VERSION = "2026-10-08";
   let codeTimer = null; // 验证码倒计时
   let codeCountdown = 0; // 倒计时秒数
   let productsCache = null; // 套餐列表缓存

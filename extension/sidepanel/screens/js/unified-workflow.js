@@ -1,7 +1,7 @@
 (function () {
   'use strict';
 
-  const PRIVACY_VERSION = '2026-07-29';
+  const PRIVACY_VERSION = '2026-10-08';
   const CONFIG_KEY = 'unifiedWorkflowConfig';
   const APPROVAL_KEY = 'unifiedWorkflowApproval';
   const $ = id => document.getElementById(id);

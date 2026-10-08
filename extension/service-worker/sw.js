@@ -8048,7 +8048,7 @@ async function getInstallationId() {
   return installationIdPromise;
 }
 const PRIVACY_CONSENT_KEY = "privacyConsent",
-  PRIVACY_CONSENT_VERSION = "2026-07-29";
+  PRIVACY_CONSENT_VERSION = "2026-10-08";
 async function requireCurrentPrivacyConsent() {
   let consent = (await chrome.storage.local.get(PRIVACY_CONSENT_KEY))[
     PRIVACY_CONSENT_KEY
@@ -8242,7 +8242,7 @@ async function cloudSettingsPutRequest(s, e) {
 }
 
 // ── 账号配置云同步 ─────────────────────────────────────
-// 只同步招聘配置；API Key、人才库、认证信息和运行状态始终留在本机。
+// 只同步招聘配置；人才库、认证信息和运行状态始终留在本机。
 const CLOUD_SETTINGS_KEYS = [
     "modelConfig",
     "timeConfig",
@@ -8971,10 +8971,8 @@ var cn = {
       y("[SW] STEP 2: \u68C0\u67E5\u5C97\u4F4D\u914D\u7F6E...");
       let t = await chrome.storage.local.get([
           R.REPLY_POSITION_CONFIGS,
-          R.KEYWORD_RULES,
           R.JOB_CONFIGS,
         ]),
-        a = (t[R.KEYWORD_RULES] || []).filter((m) => m.enabled !== !1),
         // 岗位范围三态链（2026-09-02 拍板：岗位列表开关=总开关）：scope 为唯一判定源
         scope = resolveReplyScope(t[R.JOB_CONFIGS], t[R.REPLY_POSITION_CONFIGS]),
         standby = scope.mode === "none",
@@ -9000,27 +8998,9 @@ var cn = {
         : y(
             `[SW] \u767D\u540D\u5355\u6A21\u5F0F\uFF1A\u5DF2\u542F\u7528\u5C97\u4F4D\u914D\u7F6E: ${scope.entries.map((m) => m.name).join(", ")}`,
           );
-      let o = l ? a.length > 0 : scope.entries.some((m) => m.keywordReply !== !1),
-        i = l ? !0 : scope.entries.some((m) => m.aiReply !== !1),
-        c = l
-          ? !1
-          : scope.entries.some(
-              (m) =>
-                Array.isArray(m.greetingMessages) &&
-                m.greetingMessages.length > 0,
-            );
-      if (!standby && !o && !i && !c) {
-        let m =
-          "\u542F\u7528\u7684\u5C97\u4F4D\u914D\u7F6E\u4E2D\u6CA1\u6709\u5F00\u542F\u4EFB\u4F55\u56DE\u590D\u65B9\u5F0F\uFF08\u5173\u952E\u8BCD\u56DE\u590D/AI\u56DE\u590D/\u65B0\u62DB\u547C\u8BDD\u672F\uFF09";
-        throw (
-          (he("reply", "warn", `\u505C\u6B62\u539F\u56E0\uFF1A${m}`),
-          await k(e.id),
-          new Error(m))
-        );
-      }
       if (
         (y(
-          `[SW] \u56DE\u590D\u65B9\u5F0F\u68C0\u67E5: keywordReply=${o}, aiReply=${i}, greetingMessages=${c}`,
+          `[SW] \u81EA\u52A8\u56DE\u590D\u8303\u56F4\u68C0\u67E5: mode=${scope.mode}, enabledJobs=${scope.entries.length}`,
         ),
         y("[SW] STEP 3: \u6CE8\u518C\u6807\u7B7E\u9875..."),
         !(await Yr(e.id)))
@@ -9030,12 +9010,10 @@ var cn = {
         );
       y("[SW] STEP 4: \u52A0\u8F7D\u5B8C\u6574\u914D\u7F6E...");
       let h = await Pi();
-      if (
-        (y(
-          "[SW] \u914D\u7F6E\u5DF2\u52A0\u8F7D\uFF08\u5927\u6A21\u578B\u6258\u7BA1\u6A21\u5F0F\uFF09",
-        ),
-        i)
-      ) {
+      y(
+        "[SW] \u914D\u7F6E\u5DF2\u52A0\u8F7D\uFF08\u5927\u6A21\u578B\u4EC5\u7528\u4E8E\u5224\u65AD\u662F\u5426\u56DE\u590D\uFF09",
+      );
+      if (!standby) {
         if (await llmBalanceEmpty())
           throw (
             (console.error("[SW] \u70B9\u6570\u4E0D\u8DB3\uFF0C\u5DF2\u963B\u6B62\u542F\u52A8"),
@@ -9046,21 +9024,7 @@ var cn = {
           );
       } else
         y(
-          "[SW] \u6240\u6709\u5C97\u4F4D\u5747\u672A\u5F00\u542F AI \u56DE\u590D\uFF0C\u8DF3\u8FC7\u4F59\u989D\u6821\u9A8C",
-        );
-      if (o) {
-        if (a.length === 0)
-          throw (
-            (console.error("[SW] \u5173\u952E\u8BCD\u89C4\u5219\u4E3A\u7A7A"),
-            await k(e.id),
-            new Error(
-              "\u300C\u5173\u952E\u8BCD\u56DE\u590D\u300D\u5DF2\u542F\u7528\u4F46\u672A\u914D\u7F6E\u5173\u952E\u8BCD\u89C4\u5219\uFF0C\u8BF7\u5148\u6DFB\u52A0\u81F3\u5C11\u4E00\u6761\u89C4\u5219",
-            ))
-          );
-        y("[SW] \u5173\u952E\u8BCD\u89C4\u5219\u6821\u9A8C\u901A\u8FC7");
-      } else
-        y(
-          "[SW] \u6240\u6709\u5C97\u4F4D\u5747\u672A\u5F00\u542F\u5173\u952E\u8BCD\u56DE\u590D\uFF0C\u8DF3\u8FC7\u5173\u952E\u8BCD\u89C4\u5219\u6821\u9A8C",
+          "[SW] \u5F85\u673A\u6A21\u5F0F\u4E0D\u5904\u7406\u4EFB\u4F55\u5C97\u4F4D\uFF0C\u8DF3\u8FC7\u4F59\u989D\u6821\u9A8C",
         );
       y(
         "[SW] STEP 6: \u53D1\u9001 CS_START \u8FDB\u884C\u914D\u7F6E\u6821\u9A8C...",
@@ -10179,9 +10143,7 @@ async function Gc(s) {
     ),
     d = scope2.entries,
     replyStandby = scope2.mode === "none";
-  let replyAllPositions = scope2.mode === "all",
-    h = replyAllPositions ? !0 : d.some((_) => _.aiReply !== !1),
-    g = replyAllPositions ? !0 : d.some((_) => _.keywordReply !== !1);
+  let replyAllPositions = scope2.mode === "all";
   replyStandby
     ? (console.warn(
         "[SW] [\u8C03\u5EA6\u5668] \u5F85\u673A\u6A21\u5F0F\uFF1A\u6240\u6709\u5C97\u4F4D\u914D\u7F6E\u5747\u5DF2\u5173\u95ED\uFF0C\u56DE\u590D\u5F15\u64CE\u4E0D\u5904\u7406\u4EFB\u4F55\u5C97\u4F4D",
@@ -10209,9 +10171,8 @@ async function Gc(s) {
       replyAllPositions
         ? "\u5168\u5C97\u4F4D\u6A21\u5F0F"
         : "\u542F\u7528\u4E86" + d.length + "\u4E2A\u5C97\u4F4D",
-      "keywordReply=" + g + ", aiReply=" + h,
     ),
-    h && (await llmBalanceEmpty()))
+    !replyStandby && (await llmBalanceEmpty()))
   ) {
     console.warn(
       "[SW] [\u8C03\u5EA6\u5668] \u70B9\u6570\u4E0D\u8DB3\uFF0C\u8DF3\u8FC7\u81EA\u52A8\u542F\u52A8\uFF08\u8BF7\u5230\u300C\u5927\u6A21\u578B\uFF08\u6258\u7BA1\uFF09\u300D\u9875\u5145\u503C\uFF09",

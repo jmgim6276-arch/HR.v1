@@ -54,13 +54,12 @@ await startCollector({
   actionDelaySeconds: 4,
   maxPerRun: 100,
   autoSendReply: false,
-  routeNonResumeReply: true,
   drivenByReply: true,
 });
 const drivenStart = sentToTab.find(m => m.action === 'rc_start');
 assert.ok(drivenStart, 'startCollector 应向内容脚本发送 rc_start');
 assert.equal(drivenStart.data.drivenByReply, true, 'drivenByReply 必须透传到内容脚本配置，否则联动模式不激活');
-assert.equal(drivenStart.data.routeNonResumeReply, true);
+assert.equal('routeNonResumeReply' in drivenStart.data, false, '采集器不得携带非简历自动回复路由');
 assert.equal(drivenStart.data.coordinatedMode, true);
 assert.equal(drivenStart.data.maxPerRun, 100);
 
@@ -70,5 +69,6 @@ await startCollector({ coordinatedMode: true, maxPerRun: 5 });
 const soloStart = sentToTab.find(m => m.action === 'rc_start');
 assert.ok(soloStart, '第二次启动也应发送 rc_start');
 assert.equal(soloStart.data.drivenByReply, false, '未传 drivenByReply 时内容脚本配置应为 false（独立扫描）');
+assert.equal('routeNonResumeReply' in soloStart.data, false, '独立采集也只检查简历，不自动回复普通消息');
 
 console.log('test-collector-driven-forwarding: 全部断言通过');

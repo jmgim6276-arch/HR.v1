@@ -4,10 +4,10 @@ import fs from 'node:fs';
 const store = {
   unifiedWorkflowApproval: {
     approvedAt: new Date().toISOString(),
-    privacyVersion: '2026-07-29',
+    privacyVersion: '2026-10-08',
   },
-  greetingAutomationApproval: { approvedAt: new Date().toISOString(), privacyVersion: '2026-07-29' },
-  replyAutomationApproval: { approvedAt: new Date().toISOString(), privacyVersion: '2026-07-29' },
+  greetingAutomationApproval: { approvedAt: new Date().toISOString(), privacyVersion: '2026-10-08' },
+  replyAutomationApproval: { approvedAt: new Date().toISOString(), privacyVersion: '2026-10-08' },
 };
 const runtimeListeners = [];
 const alarmListeners = [];
@@ -94,9 +94,9 @@ const waitForRestart = () => new Promise(resolve => setTimeout(resolve, 900));
 const waitForTransition = () => new Promise(resolve => setTimeout(resolve, 3500));
 const approve = () => {
   const now = new Date().toISOString();
-  store.unifiedWorkflowApproval = { approvedAt: now, privacyVersion: '2026-07-29' };
-  store.greetingAutomationApproval = { approvedAt: now, privacyVersion: '2026-07-29' };
-  store.replyAutomationApproval = { approvedAt: now, privacyVersion: '2026-07-29' };
+  store.unifiedWorkflowApproval = { approvedAt: now, privacyVersion: '2026-10-08' };
+  store.greetingAutomationApproval = { approvedAt: now, privacyVersion: '2026-10-08' };
+  store.replyAutomationApproval = { approvedAt: now, privacyVersion: '2026-10-08' };
 };
 
 // 关闭打招呼时应直接进入沟通页，并协调启动自动回复与简历采集。
@@ -118,7 +118,7 @@ assert.equal(resumeStart[1].maxPerRun, 100);
 assert.equal(resumeStart[1].intervalSeconds, 60);
 assert.equal(resumeStart[1].autoSendReply, false);
 // 联动模式（2026-08-31）：回复模块开 → 采集被回复驱动（drivenByReply），不独立扫列表
-assert.equal(resumeStart[1].routeNonResumeReply, true);
+assert.equal('routeNonResumeReply' in resumeStart[1], false, '编排器不得让采集器回复非简历消息');
 assert.equal(resumeStart[1].drivenByReply, true);
 
 // 简历获得页面操作权时暂停回复，释放后恢复。
@@ -378,7 +378,38 @@ status = await h.cmd_start_unified_workflow({
 });
 const resumeSolo = calls.find(item => Array.isArray(item) && item[0] === 'startResumeCollector');
 assert.equal(resumeSolo[1].drivenByReply, false);
-assert.equal(resumeSolo[1].routeNonResumeReply, false);
+assert.equal('routeNonResumeReply' in resumeSolo[1], false, '单独采集也不得回复非简历消息');
 await h.cmd_stop_unified_workflow();
 
-console.log('✅ 三模块开关、循环编排（每轮计数/空转回打/空轮收尾）、采集优先锁、暂停顺延、永久跳过与人工恢复、采集联动开关全部通过');
+// ①无可用岗位属于正常空结果；②③开启时必须继续进入沟通监听，而不是人工暂停。
+await tick();
+approve();
+calls.length = 0;
+tab = { ...tab, url: 'https://www.zhipin.com/web/geek/recommend' };
+status = await h.cmd_start_unified_workflow({
+  modules: { greeting: true, reply: true, resume: true },
+  listenDurationMinutes: 30,
+  scanIntervalSeconds: 60,
+});
+for (const listener of runtimeListeners) {
+  listener({ action: 'greeting_status_report', data: { state: 'idle', statusText: '无可用岗位配置' } });
+}
+await waitForTransition();
+status = await h.cmd_get_unified_workflow_status();
+assert.equal(status.state, 'running');
+assert.equal(status.stage, 'listening');
+assert.ok(calls.includes('cmd_start'), '①无岗位时仍应启动②自动回复');
+assert.ok(calls.some(item => Array.isArray(item) && item[0] === 'startResumeCollector'), '①无岗位时仍应启动③简历采集');
+
+// 子模块的真实判断与跳过原因必须进入统一运行日志，卡住时可直接定位。
+for (const listener of runtimeListeners) {
+  listener({ action: 'running_log', data: { taskType: 'reply', level: 'info', message: '⏭️ 跳过候选人丁：近期已自动回复，避免重复发送' } });
+  listener({ action: 'rc_log', data: { level: 'warn', message: '候选人戊：未找到简历接收按钮，准备重试' } });
+}
+await tick();
+status = await h.cmd_get_unified_workflow_status();
+assert.ok(status.logs.some(item => item.message.includes('② 自动回复：⏭️ 跳过候选人丁')));
+assert.ok(status.logs.some(item => item.message.includes('③ 简历采集：候选人戊')));
+await h.cmd_stop_unified_workflow();
+
+console.log('✅ 三模块开关、空岗位续跑、循环编排、跨模块诊断日志、采集优先锁、暂停顺延、永久跳过与人工恢复、采集联动开关全部通过');
