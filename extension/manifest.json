@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "凯旋智聘",
-  "version": "1.5.2",
+  "version": "1.5.3",
   "description": "支持打招呼、自动沟通、未读简历采集与人才库管理的招聘辅助工具",
   "permissions": [
     "sidePanel",
