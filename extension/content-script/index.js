@@ -127,6 +127,15 @@
     }
     return `fp_${Math.abs(n).toString(36)}`;
   }
+  function buildReplyMessageKey(i, e) {
+    let t = [...(Array.isArray(e) ? e : [])]
+      .reverse()
+      .find((s) => String(s?.from?.uid || "") === String(i || ""));
+    if (!t) return "";
+    if (t.mid) return `mid_${t.mid}`;
+    if (t.__replyMessageKey) return String(t.__replyMessageKey);
+    return Ee(i, t.body?.text || `type:${t.body?.type || ""}`, t.time || 0);
+  }
   function Se(i, e = null) {
     try {
       return JSON.parse(i);
@@ -1539,14 +1548,23 @@
           await this._handoffToCollector(s.uid, s.name);
           return !1;
         }
-        l = [
-          {
+        let g = (await qe(s.uid)).messages || [],
+          p = g.find(
+            (y) =>
+              String(y?.from?.uid || "") === String(s.uid) &&
+              String(y?.body?.text || "").trim() === String(f).trim(),
+          );
+        l = p
+          ? [{ ...p, __visibleDom: !0 }]
+          : [
+            {
             from: { uid: s.uid, name: s.name || "", avatar: s.avatar || "" },
             body: { type: 1, text: f, jobDesc: { title: u } },
             time: Date.now() - Ce() - 1e3,
+            __replyMessageKey: Ee(s.uid, f, 0),
             __visibleDom: !0,
           },
-        ];
+          ];
         this.userMessageQueues.set(s.uid, l),
           this.lastMessageTime.set(s.uid, l[0].time);
       } else l.forEach((f) => (f.__visibleDom = !0));
@@ -1938,11 +1956,18 @@
           (t.length = 0);
         return;
       }
+      let replyMessageKey = buildReplyMessageKey(e, o);
+      if (!replyMessageKey) {
+        this._sendRunningLog(`⚠️ 跳过 ${u || "候选人"}：无法识别候选人消息，避免重复发送`, "warn"),
+          await this._upsertRecord(e, o, b, p, f),
+          (t.length = 0);
+        return;
+      }
       let replyClaim;
       try {
         replyClaim = await chrome.runtime.sendMessage({
           action: "cmd_claim_reply",
-          data: { uid: String(e) },
+          data: { uid: String(e), messageKey: replyMessageKey },
         });
       } catch (claimError) {
         this._sendRunningLog(`⚠️ 跳过 ${u || "候选人"}：无法确认是否已回复（${claimError.message || "幂等锁异常"}）`, "warn"),
@@ -1966,14 +1991,14 @@
         if (sentCount === 0)
           await chrome.runtime.sendMessage({
             action: "cmd_release_reply",
-            data: { uid: String(e), token: replyClaim.token },
+            data: { uid: String(e), messageKey: replyMessageKey, token: replyClaim.token },
           }).catch(() => {});
         throw sendError;
       }
       if (sentCount === 0) {
         await chrome.runtime.sendMessage({
           action: "cmd_release_reply",
-          data: { uid: String(e), token: replyClaim.token },
+          data: { uid: String(e), messageKey: replyMessageKey, token: replyClaim.token },
         }).catch(() => {});
         t.length = 0;
         return;

@@ -118,7 +118,7 @@ assert.equal(resumeStart[1].maxPerRun, 100);
 assert.equal(resumeStart[1].intervalSeconds, 60);
 assert.equal(resumeStart[1].autoSendReply, false);
 // 联动模式（2026-08-31）：回复模块开 → 采集被回复驱动（drivenByReply），不独立扫列表
-assert.equal(resumeStart[1].routeNonResumeReply, true);
+assert.equal('routeNonResumeReply' in resumeStart[1], false, '编排器不得让采集器回复非简历消息');
 assert.equal(resumeStart[1].drivenByReply, true);
 
 // 简历获得页面操作权时暂停回复，释放后恢复。
@@ -378,7 +378,7 @@ status = await h.cmd_start_unified_workflow({
 });
 const resumeSolo = calls.find(item => Array.isArray(item) && item[0] === 'startResumeCollector');
 assert.equal(resumeSolo[1].drivenByReply, false);
-assert.equal(resumeSolo[1].routeNonResumeReply, false);
+assert.equal('routeNonResumeReply' in resumeSolo[1], false, '单独采集也不得回复非简历消息');
 await h.cmd_stop_unified_workflow();
 
 // ①无可用岗位属于正常空结果；②③开启时必须继续进入沟通监听，而不是人工暂停。

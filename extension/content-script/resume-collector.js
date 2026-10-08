@@ -154,7 +154,6 @@
       coordinatedMode,
       autoSendReply,
       replyMessages,
-      routeNonResumeReply: input?.routeNonResumeReply === true,
       // 联动模式（用户拍板 2026-08-31）：自动回复开着时，采集不再独立扫列表，改为「回复打开会话→
       // 顺手在同一趟收简历」。因为点开未读即消红点，两个模块各自扫会互相抢信号。由编排器按 modules.reply 透传。
       drivenByReply: input?.drivenByReply === true,
@@ -961,94 +960,6 @@
     return true;
   }
 
-  // ── Ph3：未读积压路由（非简历 → 判断回复）────────────────────────
-  // 采集器已串行打开该会话，此处读信息条（brief）与候选人最新消息（走 API，避免猜 DOM）。
-  function readOpenConversationBrief() {
-    const brief = { gender: '', age: null, years: null, education: '', position: '' };
-    try { brief.position = (document.querySelector('span.position-name') || {}).textContent?.trim() || ''; } catch (_) {}
-    let root =
-      document.querySelector('.conversation-container') ||
-      document.querySelector('.chat-conversation') ||
-      document.querySelector("[class*='conversation']") ||
-      document.body;
-    let text = '';
-    try { text = ((root && root.innerText) || '').replace(/\s+/g, ' ').slice(0, 800); } catch (_) {}
-    const ma = text.match(/(\d{2})\s*岁/); if (ma) brief.age = parseInt(ma[1], 10);
-    const my = text.match(/(\d{1,2})\s*年(?!\s*龄)/); if (my) brief.years = parseInt(my[1], 10);
-    const me = text.match(/(博士|硕士|研究生|MBA|EMBA|本科|大专|专科|高中|中专|初中)/); if (me) brief.education = me[1];
-    return brief;
-  }
-
-  async function fetchLastCandidateText(uid) {
-    try {
-      const url = `https://www.zhipin.com/wapi/zpchat/boss/historyMsg?src=0&gid=${uid}&maxMsgId=0&c=20&page=1`;
-      const resp = await fetch(url, { method: 'GET', credentials: 'include', headers: { 'x-requested-with': 'XMLHttpRequest' } });
-      if (!resp.ok) return '';
-      const data = await resp.json();
-      if (data.code !== 0 || !data.zpData) return '';
-      const messages = data.zpData.messages || [];
-      for (let i = 0; i < messages.length; i++) {
-        const msg = messages[i];
-        const fromUid = String(msg?.from?.uid ?? msg?.from?.id ?? '');
-        const text = String(msg?.body?.text || '').trim();
-        if (fromUid && String(uid) === fromUid && text) return text;
-      }
-      return '';
-    } catch (_) {
-      return '';
-    }
-  }
-
-  async function routeToReplyJudgment(meta) {
-    setStage('route_reply_judgment', meta);
-    const uid = String(meta.candidateId || meta.key || '');
-    if (!uid) {
-      runtime.stats.skipped++;
-      return { outcome: 'no_resume', meta };
-    }
-    const brief = readOpenConversationBrief();
-    const lastText = await fetchLastCandidateText(uid);
-    if (!lastText) {
-      runtime.stats.skipped++;
-      log(`⏭ ${meta.name || '该候选人'}无候选人文本消息，跳过`, 'info');
-      return { outcome: 'no_text', meta };
-    }
-    const verdict = await sendRuntime({
-      action: 'cmd_judge_unread_reply',
-      data: { uid, brief, lastText },
-    });
-    if (!verdict || verdict.action !== 'reply') {
-      runtime.stats.skipped++;
-      log(`⏭ ${meta.name || '该候选人'}：${verdict?.reason || '判定不回复'}`, 'info');
-      return { outcome: 'skip_reply', meta };
-    }
-    const validation = await chrome.runtime.sendMessage({ action: 'cmd_validate_subscription' });
-    if (!validation?.valid) throw new Error(validation?.message || validation?.error || '登录或订阅已失效');
-    const claim = await sendRuntime({ action: 'cmd_claim_reply', data: { uid } });
-    if (!claim?.ok) {
-      runtime.stats.skipped++;
-      log(`⏭ ${meta.name || '该候选人'}：${claim?.reason || '近期已自动回复，避免重复发送'}`, 'info');
-      return { outcome: 'skip_reply', meta };
-    }
-    setStage('route_reply_send', meta);
-    let replied = false;
-    try {
-      replied = await sendReplyMessages({ name: meta.name, position: meta.position }, meta, verdict.replyMessages);
-    } catch (err) {
-      await sendRuntime({ action: 'cmd_release_reply', data: { uid, token: claim.token } }).catch(() => {});
-      throw err;
-    }
-    if (replied) {
-      runtime.stats.replied++;
-      await sendRuntime({ action: 'cmd_mark_replied', data: { uid } });
-      log(`📤 积压回复 → ${meta.name || '候选人'}：岗位「${verdict.jobName || ''}」${verdict.replyMessages.length} 条话术`);
-    } else {
-      await sendRuntime({ action: 'cmd_release_reply', data: { uid, token: claim.token } }).catch(() => {});
-    }
-    return { outcome: replied ? 'replied' : 'skip_reply', meta };
-  }
-  // ── Ph3 结束 ─────────────────────────────────────────────────────
-
   async function processUnreadRow(row) {
     const meta = getCandidateMeta(row);
     setStage('open_conversation', meta);
@@ -1072,9 +983,7 @@
       if (!conversationConfirmation) {
         throw new Error(`${meta.name || '该候选人'}点击后未能确认会话已选中`);
       }
-      // 独立模式凭未读打开才可能路由去回复；凭简历意图打开（__kxResumeOnly）的不路由（防打扰）。
-      const allowRouteReply = runtime.config?.routeNonResumeReply && !row.__kxResumeOnly;
-      return await collectOpenConversationBody(meta, conversationConfirmation, allowRouteReply);
+      return await collectOpenConversationBody(meta, conversationConfirmation);
     } finally {
       await setCoordinationLock(false, meta);
       runtime.currentMeta = null;
@@ -1082,11 +991,8 @@
     }
   }
 
-  // 「会话已打开」之后的收简历主体：找卡 → 点同意 → 预览 → 提取 →（可选）回发话术。
-  // processUnreadRow（独立模式，自己点行开会话）与 collectCurrentOpenConversation（联动模式，
-  // 会话已由自动回复打开）共用。allowRouteReply＝没找到同意按钮时是否路由去自动回复——独立模式
-  // 凭未读打开、可路由；联动模式会话刚被回复处理过，绝不重复路由以免对候选人发打扰话术。
-  async function collectOpenConversationBody(meta, conversationConfirmation, allowRouteReply) {
+  // 「会话已打开」之后只检查和采集简历；没有简历就跳过，不承担岗位自动回复。
+  async function collectOpenConversationBody(meta, conversationConfirmation) {
     // 选中状态出现后再留出一段聊天区渲染时间。BOSS 可以复用同一按钮 DOM，
     // 因此不再以 DOM 对象是否变化判断候选人切换。
     await sleep(2400);
@@ -1101,12 +1007,6 @@
         setStage('locate_resume_consent', meta);
         const acceptTarget = await waitForResumeAcceptTarget(conversationConfirmation);
         if (!acceptTarget) {
-          // Ph3：非简历的未读会话，路由到"判断回复"（复用本采集器已打开的信息条上下文）。
-          // 仅限独立模式凭未读打开的会话（调用方以 allowRouteReply 传入）；联动模式或凭简历意图
-          // 打开的会话，候选人没发新消息，路由去自动回复会发出打扰话术，直接跳过。
-          if (allowRouteReply) {
-            return await routeToReplyJudgment(meta);
-          }
           runtime.stats.skipped++;
           log(`⏭ ${meta.name || '该候选人'}未发现可确认的简历同意按钮`, 'info');
           return { outcome: 'no_resume', meta };
@@ -1235,7 +1135,7 @@
     setStage('open_conversation', meta);
     setStatus('running', `联动收简历：${name || '候选人'}`);
     try {
-      return await collectOpenConversationBody(meta, confirmation, false);
+      return await collectOpenConversationBody(meta, confirmation);
     } finally {
       runtime.currentMeta = null;
       runtime.currentStage = '';

@@ -603,7 +603,6 @@ export async function startCollector(data = {}) {
     coordinatedMode: data.coordinatedMode === true,
     autoSendReply,
     replyMessages,
-    routeNonResumeReply: data.routeNonResumeReply === true,
     // 联动模式（2026-08-31 拍板）：回复模块开着时采集由回复驱动、不独立扫列表。编排器按
     // modules.reply 透传——此前本层漏转发，CS normalizeConfig 恒得 false，联动从未生效（P0）。
     drivenByReply: data.drivenByReply === true,
@@ -660,13 +659,9 @@ async function handlePanelCommand(action, data) {
   return null;
 }
 
-// ── Ph3：未读积压路由 + 判断回复 + per-uid 幂等锁 ──────────────────────
-// 设计：采集器（内容脚本）串行打开未读会话后，非简历的会话把 brief/最新消息交给这里，
-// 由 SW 统一做"规则匹配岗位 + LLM 判断是否回复"，并返回该岗位的静态话术。
-// 幂等锁防"MQTT 实时回复"与"扫描积压回复"双触发同一 uid。
-const GREETING_CONFIGS_KEY = 'greetingConfigs';
+// 自动回复按“候选人 + 候选人消息”领取发送资格，避免同一消息被重复处理。
 const REPLY_IDEM_KEY = 'replyIdemLocks';
-const REPLY_IDEM_WINDOW_MS = 10 * 60 * 1000; // 只防 MQTT/扫描双触发的重复回，不挡正常多轮对话
+const REPLY_IDEM_RETENTION_MS = 24 * 60 * 60 * 1000;
 let replyClaimQueue = Promise.resolve();
 
 function serializeReplyClaim(operation) {
@@ -677,31 +672,34 @@ function serializeReplyClaim(operation) {
 
 function pruneReplyLocks(locks, now) {
   for (const key of Object.keys(locks)) {
-    if (now - Number(locks[key] || 0) > 24 * 3600 * 1000) delete locks[key];
+    if (now - Number(locks[key] || 0) > REPLY_IDEM_RETENTION_MS) delete locks[key];
   }
 }
 
-async function claimReply(uid) {
-  const key = String(uid || '');
-  if (!key) return { ok: false, reason: '缺少 uid' };
+async function claimReply(uid, messageKey) {
+  const candidateKey = String(uid || '');
+  const eventKey = String(messageKey || '');
+  if (!candidateKey || !eventKey) return { ok: false, reason: '缺少候选人消息标识' };
+  const key = `${candidateKey}:${eventKey}`;
   return serializeReplyClaim(async () => {
     const now = Date.now();
     const stored = await chrome.storage.local.get(REPLY_IDEM_KEY);
     const locks = stored[REPLY_IDEM_KEY] || {};
-    const last = Number(locks[key] || 0);
-    if (last && now - last < REPLY_IDEM_WINDOW_MS) {
-      return { ok: false, reason: '近期已自动回复，避免重复发送' };
+    pruneReplyLocks(locks, now);
+    if (locks[key]) {
+      return { ok: false, reason: '本条候选人消息已自动回复，避免重复发送' };
     }
     locks[key] = now;
-    pruneReplyLocks(locks, now);
     await chrome.storage.local.set({ [REPLY_IDEM_KEY]: locks });
     return { ok: true, token: now };
   });
 }
 
-async function releaseReply(uid, token) {
-  const key = String(uid || '');
-  if (!key || !token) return { ok: false };
+async function releaseReply(uid, messageKey, token) {
+  const candidateKey = String(uid || '');
+  const eventKey = String(messageKey || '');
+  if (!candidateKey || !eventKey || !token) return { ok: false };
+  const key = `${candidateKey}:${eventKey}`;
   return serializeReplyClaim(async () => {
     const stored = await chrome.storage.local.get(REPLY_IDEM_KEY);
     const locks = stored[REPLY_IDEM_KEY] || {};
@@ -711,101 +709,6 @@ async function releaseReply(uid, token) {
     return { ok: true };
   });
 }
-
-function normalizePositionName(value) {
-  return String(value || '').toLowerCase().replace(/[\s·,，、/\\-]+/g, '');
-}
-
-function matchJobByRules(position, brief, configs) {
-  const all = (Array.isArray(configs) ? configs : []).filter(c => c && c.jobName);
-  if (!all.length) return null;
-  const np = normalizePositionName(position);
-  let job = all.find(c => {
-    const nj = normalizePositionName(c.jobName);
-    return nj && np && (np.includes(nj) || nj.includes(np));
-  });
-  if (!job) job = all.find(c => c.isDefault === true) || null;
-  if (!job) return null;
-  const filters = Array.isArray(job.bossFilters) ? job.bossFilters : [];
-  for (const flt of filters) {
-    const nm = flt && flt.name;
-    const vals = (Array.isArray(flt.values) ? flt.values : [flt.values]).filter(v => v != null && v !== '');
-    if (!nm || !vals.length) continue;
-    if (nm === '年龄' && brief && brief.age != null) {
-      const mm = String(vals[0]).match(/(\d+)\s*-\s*(\d+)/);
-      if (mm && (brief.age < +mm[1] || brief.age > +mm[2])) return null;
-    } else if (/学历/.test(nm) && brief && brief.education) {
-      const order = ['初中', '中专', '高中', '大专', '专科', '本科', '研究生', '硕士', 'MBA', 'EMBA', '博士'];
-      const rank = x => { const i = order.indexOf(String(x).replace('要求', '')); return i < 0 ? 0 : i; };
-      const needs = vals.map(rank).filter(rv => rv > 0);
-      if (needs.length && rank(brief.education) < Math.min(...needs)) return null;
-    } else if (/性别/.test(nm) && brief && brief.gender) {
-      if (!vals.some(v => String(v).includes(brief.gender))) return null;
-    }
-  }
-  return job;
-}
-
-async function judgeReplyWithLLM(lastText, jobName) {
-  const sys = '你是招聘助手消息分类器。判断候选人发来的最新消息是否属于"候选人主动打招呼/咨询，值得 HR 回复"。只输出 JSON：{"reply":true或false,"reason":"≤15字"}。判 false：HR 自己发的；候选人仅应答/确认（好的/谢谢/嗯/OK）；系统通知/广告；空或无意义。判 true：主动打招呼、自我介绍、询问岗位、表达兴趣、提出实质问题。';
-  const usr = `岗位：${jobName || '未知'}\n候选人最新消息：${String(lastText || '').slice(0, 500)}`;
-  try {
-    // /llm/chat 透传（提示词留在插件自组）。
-    const json = await collectorApiPost('/llm/chat', {
-      scene: 'reply_judge',
-      messages: [
-        { role: 'system', content: sys },
-        { role: 'user', content: usr },
-      ],
-      max_tokens: 120,
-      temperature: 0,
-    });
-    const content = String(json?.content || '');
-    const mm = content.match(/\{[\s\S]*\}/);
-    const obj = mm ? JSON.parse(mm[0]) : {};
-    return { shouldReply: obj.reply !== false, reason: obj.reason || '' };
-  } catch (err) {
-    // 断粮 → 停回（shouldReply:false + billingBlock 标记）；其它失败维持原 fail-open。
-    if (isBillingBlockError(err)) return { shouldReply: false, billingBlock: true, reason: '点数不足，请充值' };
-    return { shouldReply: true, reason: '判断失败，默认回复' };
-  }
-}
-
-async function handleJudgeUnreadReply(data = {}) {
-  const uid = String(data.uid || '');
-  if (!uid) return { action: 'skip', reason: '缺少 uid' };
-  const stored = await chrome.storage.local.get([GREETING_CONFIGS_KEY, REPLY_IDEM_KEY]);
-  const locks = stored[REPLY_IDEM_KEY] || {};
-  const last = Number(locks[uid] || 0);
-  if (last && Date.now() - last < REPLY_IDEM_WINDOW_MS) {
-    return { action: 'skip', reason: '近期已回复，幂等跳过' };
-  }
-  const job = matchJobByRules(data.brief?.position || '', data.brief || {}, stored[GREETING_CONFIGS_KEY] || []);
-  if (!job) return { action: 'skip', reason: '条件不符或无匹配岗位' };
-  const replyMessages = (Array.isArray(job.replyMessages) ? job.replyMessages : [])
-    .map(item => String(item || '').trim())
-    .filter(Boolean);
-  if (!replyMessages.length) return { action: 'skip', reason: '岗位未配置回复话术', jobName: job.jobName || '' };
-  const verdict = await judgeReplyWithLLM(data.lastText, job.jobName || data.brief?.position || '');
-  if (verdict.billingBlock) warnBillingBlocked('自动回复');
-  if (!verdict.shouldReply) return { action: 'skip', reason: verdict.reason || '判定为冗余', jobName: job.jobName || '', billingBlock: !!verdict.billingBlock };
-  return { action: 'reply', jobName: job.jobName || '', replyMessages };
-}
-
-async function markReplied(uid) {
-  const key = String(uid || '');
-  if (!key) return { ok: false };
-  return serializeReplyClaim(async () => {
-    const stored = await chrome.storage.local.get(REPLY_IDEM_KEY);
-    const locks = stored[REPLY_IDEM_KEY] || {};
-    const now = Date.now();
-    locks[key] = now;
-    pruneReplyLocks(locks, now);
-    await chrome.storage.local.set({ [REPLY_IDEM_KEY]: locks });
-    return { ok: true };
-  });
-}
-// ── Ph3 结束 ─────────────────────────────────────────────────────────
 
 chrome.runtime.onConnect.addListener(port => {
   if (port.name !== 'resume-collect-panel') return;
@@ -821,25 +724,13 @@ chrome.runtime.onConnect.addListener(port => {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.action === 'cmd_claim_reply') {
-    claimReply(message.data?.uid)
+    claimReply(message.data?.uid, message.data?.messageKey)
       .then(sendResponse)
       .catch(err => sendResponse({ ok: false, reason: err.message }));
     return true;
   }
   if (message?.action === 'cmd_release_reply') {
-    releaseReply(message.data?.uid, message.data?.token)
-      .then(sendResponse)
-      .catch(() => sendResponse({ ok: false }));
-    return true;
-  }
-  if (message?.action === 'cmd_judge_unread_reply') {
-    handleJudgeUnreadReply(message.data)
-      .then(sendResponse)
-      .catch(err => sendResponse({ action: 'skip', reason: err.message }));
-    return true;
-  }
-  if (message?.action === 'cmd_mark_replied') {
-    markReplied(message.data?.uid)
+    releaseReply(message.data?.uid, message.data?.messageKey, message.data?.token)
       .then(sendResponse)
       .catch(() => sendResponse({ ok: false }));
     return true;
